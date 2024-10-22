@@ -50,7 +50,8 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'ku_djangoo.urls'
+
+ROOT_URLCONF = 'ku_djangoo.urls' # ku_djangoo.urls polls.urls 
 
 TEMPLATES = [
     {
