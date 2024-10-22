@@ -343,6 +343,44 @@ cache.clear()
 python manage.py flush
 ```
 
+## Resolving 'polls' is not a registered namespace
+
+> "django.urls.exceptions.NoReverseMatch: 'polls' is not a registered namespace"
+
+At main application folder where `settings.py`, `asgi.py`, `wsgi.py` files are:  
+Ensure to add `namespace='polls'`.
+Ensure to match the application folder name `polls`.
+
+`ku_djangoo/urls.py`
+
+```py
+urlpatterns = [
+    path('polls/', include('polls.urls', namespace='polls')),
+    ...
+]
+```
+
+Ensure correct spellings such as `app_name`, check wrong spellings such as `app_names`.  
+
+`polls/urls.py`
+
+```py
+app_name = 'polls'
+```
+
+`manage.py`
+
+```py
+def main():
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ku_djangoo.settings')
+```
+
+`settings.py`
+
+```py
+ROOT_URLCONF = 'ku_djangoo.urls' 
+```
+
 ## Saving Python Packages and versions
 
 ```sh
