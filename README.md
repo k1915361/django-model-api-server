@@ -26,8 +26,7 @@ cd ~/newproject
 # make env
 python3 -m venv my_env
 # Python 3.12
-# Throughout the whole document, it was tried best to use python 3.11 for stability but using it is causing trouble, stick with 3.12 if preferred. 
-# troubles such as `python3.11 -m manage.py migrate` freezing and not running normally.
+# Throughout the whole document, it was tried best to use python 3.11 for stability but using it is causing troubles, stick with 3.12 if preferred. 
 # in practise use `python` or `python3.12 -m` instaed of `python3.11 -m`
 
 # check current env
@@ -93,9 +92,9 @@ python manage.py runserver
 # https://docs.djangoproject.com/en/5.1/intro/tutorial02/
 python manage.py migrate
 
-python3.11 manage.py makemigrations webapp
+python3.11 manage.py makemigrations polls
 
-python3.11 manage.py sqlmigrate webapp 0001
+python3.11 manage.py sqlmigrate polls 0001
 
 # run migrate again to create those model tables in your database:
 python3.11 manage.py migrate
@@ -103,7 +102,7 @@ python3.11 manage.py migrate
 # API - Interactive python shell
 python3.11 manage.py shell
 
-from webapp.models import Choice, Question  # Import the model classes we just wrote.
+from polls.models import Choice, Question  # Import the model classes we just wrote.
 
 # No questions are in the system yet.
 Question.objects.all()
@@ -218,7 +217,7 @@ python -V
 
 source ~/.bashrc
 
-export DJANGO_SETTINGS_MODULE=webapp.settings
+export DJANGO_SETTINGS_MODULE=ku_djangoo.settings
 ```
 
 ## Making migrations to database
@@ -234,6 +233,8 @@ python manage.py makemigrations polls
 #     + Create model Choice
 
 python manage.py sqlmigrate polls 0001
+python manage.py sqlmigrate polls 0002
+python manage.py sqlmigrate polls 0003
 
 # BEGIN;
 # --
@@ -263,3 +264,88 @@ python manage.py createsuperuser
 
 python manage.py runserver
 ```
+
+## Creating first login database record
+
+```sh
+# python manage.py shell
+
+from polls.models import Login
+
+Login.objects.all()
+
+l = Login(email="ace@email.com", password="ace133", username="ace")
+
+l.save()
+
+l.id
+l.email
+l.password
+l.username
+
+Login.objects.all()
+```
+
+## Creating first model database record
+
+```sh
+# python manage.py shell
+
+from polls.models import Net_Model, Login
+
+Net_Model.objects.all()
+
+l = Login.objects.get(pk=1)
+
+n = Net_Model(name="aceNet", model_type="aceNetType", owner_id=l, meta_description="aceNet meta description", model_url="example.com", description="ace-net description")
+
+n.save()
+
+n.name
+n.meta_description
+n.model_url
+
+Net_Model.objects.all()
+```
+
+## Testing
+
+```sh
+python manage.py test polls
+
+# output messsage
+Found 10 test(s).
+Creating test database for alias 'default'...
+Got an error creating the test database: source database "template1" is being accessed by other users
+DETAIL:  There are 5 other sessions using the database.
+```
+
+## Does Django close database connection?
+
+Django closes the connection once it exceeds the maximum age defined by CONN_MAX_AGE or when it isn't usable any longer.
+
+[Databases | Django documentation](https://docs.djangoproject.com/en/5.1/ref/databases/)
+
+## Clearing Django cache
+
+```sh
+# python manage.py shell
+
+from django.db import connections, transaction
+from django.core.cache import cache # This is the memcache cache.
+
+cache.clear()
+```
+
+## Deleting all data in database tables
+
+```sh
+python manage.py flush
+```
+
+## Saving Python Packages and versions
+
+```sh
+pip freeze > requirements.txt
+```
+
