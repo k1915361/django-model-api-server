@@ -27,7 +27,7 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
-LOGIN_REDIRECT_URL = '/polls'
+LOGIN_REDIRECT_URL = '/polls/logged-in'
 
 # Application definition
 
@@ -52,7 +52,7 @@ MIDDLEWARE = [
 ]
 
 
-ROOT_URLCONF = 'ku_djangoo.urls' # ku_djangoo.urls polls.urls 
+ROOT_URLCONF = 'ku_djangoo.urls' 
 
 TEMPLATES = [
     {
