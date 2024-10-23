@@ -5,10 +5,11 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views import generic
 
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, render, redirect
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
+from django.conf import settings
 
 class IndexView(generic.ListView):
     template_name = "polls/index.html"
@@ -53,6 +54,12 @@ def vote(request, question_id):
         # with POST data. This prevents data from being posted twice if a
         # user hits the Back button.
         return HttpResponseRedirect(reverse("polls:results", args=(question.id,)))
+
+def logged_in_view(request):
+    if not request.user.is_authenticated:
+        return redirect(f"{settings.LOGIN_URL}?next={request.path}")
+
+    return render(request, "polls/logged_in_page.html")    
 
 def register(request):
     username = request.POST["username"]
@@ -106,6 +113,10 @@ def change_password(request):
 @login_required(login_url='/polls/login')
 def view_user_private_models(request):
     pass
+
+def logout_view(request):
+    logout(request)
+    return redirect("/polls/")
 
 def get_queryset(self):
     """
