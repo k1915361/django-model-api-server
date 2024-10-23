@@ -337,6 +337,10 @@ from django.core.cache import cache # This is the memcache cache.
 cache.clear()
 ```
 
+## Designing Web Layout
+
+https://getbootstrap.com/docs/5.3/forms/input-group/#basic-example
+
 ## Deleting all data in database tables
 
 ```sh
@@ -348,7 +352,7 @@ python manage.py flush
 > "django.urls.exceptions.NoReverseMatch: 'polls' is not a registered namespace"
 
 At main application folder where `settings.py`, `asgi.py`, `wsgi.py` files are:  
-Ensure to add `namespace='polls'`.
+Ensure to add `namespace='polls'`.  
 Ensure to match the application folder name `polls`.
 
 `ku_djangoo/urls.py`
