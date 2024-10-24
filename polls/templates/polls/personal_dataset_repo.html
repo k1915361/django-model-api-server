@@ -1,0 +1,52 @@
+{% extends "base_logged_in.html" %}
+
+{% block content %}
+
+<div class="container">
+    <div class="col p-1 mb-1 bg-body-tertiary rounded border border-light-subtle">
+        <h5>Dataset Management</h5>
+    </div>
+    <div class="row align-items-start gap-1">
+        <div class="row gap-1">
+            <div class="col p-1 bg-body-tertiary rounded border border-light-subtle">
+                <div class="row gap-1 m-0">
+                    <a class="btn btn-primary" href="/polls/personal-dataset-analysis/" role="button">Dataset 01</a>
+                    <a class="btn btn-primary" href="/polls/personal-dataset-analysis/" role="button">Dataset 02</a>
+                    <a class="btn btn-primary" href="/polls/personal-dataset-analysis/" role="button">Dataset 03</a>                    
+                </div>
+            </div>
+            <div class="col p-1 bg-body-tertiary rounded border border-light-subtle">
+                <div class="row gap-1 m-0">
+                    <button class="btn btn-primary">Dataset Analysis</button>
+                    <button class="btn btn-primary">Data Generation</button>
+                    <button class="btn btn-primary">Cleaning</button>
+                    <button class="btn btn-primary">Enrichment</button>
+                    <button class="btn btn-primary">Data Curation</button>
+                    <button class="btn btn-primary">Balancing</button>
+                    <button class="btn btn-primary">XAI</button>
+                </div>
+            </div>
+            <div class="col p-1 bg-body-tertiary rounded border border-light-subtle">
+                Dataset Details
+                <p></p>
+                <p></p>
+                <p></p>
+            </div>
+        </div>
+        <div class="row gap-1">
+            <button class="col btn btn-primary">
+                Upload Dataset
+            </button>
+            <button class="col btn btn-danger">
+                Delete Dataset
+            </button>
+            <button class="col btn btn-primary">
+                Download / Export
+            </button>
+        </div>        
+    </div>
+</div>
+
+
+
+{% endblock content %}

@@ -70,9 +70,14 @@ def register(request):
     else:
         "The username is already taken."
 
-def check_authentication(request):
-    template_name = "polls/login.html"
+def authentication_view(request):
+    print("running authentication_view(request) \n ")
+    template_name = "registration/login_view.html"
 
+    return render(request, template_name)
+
+def check_authentication(request):
+    print("running check_authentication(request) \n ")
     username = request.POST["username"]
     password = request.POST["password"]
     user = authenticate(request, username=username, password=password)
@@ -126,3 +131,38 @@ def get_queryset(self):
     return Question.objects.filter(pub_date__lte=timezone.now()).order_by("-pub_date")[
         :5
     ]
+
+def process_model_options_view(request):
+    template_name = "polls/process_model_options.html"
+
+    return render(request, template_name)
+
+def human_reinforced_feedback_view(request):
+    template_name = "polls/human_reinforced_feedback.html"
+
+    return render(request, template_name)
+
+def final_task_analytics_view(request):
+    template_name = "polls/final_task_analytics.html"
+
+    return render(request, template_name)
+
+def previous_tasks_view(request):
+    template_name = "polls/previous_tasks.html"
+
+    return render(request, template_name)
+
+def personal_model_repo_view(request):
+    template_name = "polls/personal_model_repo.html"
+
+    return render(request, template_name)
+
+def personal_dataset_repo_view(request):
+    template_name = "polls/personal_dataset_repo.html"
+
+    return render(request, template_name)
+
+def personal_dataset_analysis_view(request):
+    template_name = "polls/personal_dataset_analysis.html"
+
+    return render(request, template_name)
