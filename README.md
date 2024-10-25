@@ -339,7 +339,14 @@ cache.clear()
 
 ## Designing Web Layout
 
+Forms
 https://getbootstrap.com/docs/5.3/forms/input-group/#basic-example
+
+## Making HTML Templates
+
+Template  
+https://docs.djangoproject.com/en/5.1/ref/templates/language/
+
 
 ## Deleting all data in database tables
 
@@ -391,3 +398,32 @@ ROOT_URLCONF = 'ku_djangoo.urls'
 pip freeze > requirements.txt
 ```
 
+## Hiding Sidebar at mobile screen
+
+Bootstrap
+Layout Breakpoints
+```
+Breakpoint 	        Class infix 	Dimensions
+Extra small 	    None 	        <576px
+Small   	        sm 	            ≥576px
+Medium 	            md 	            ≥768px
+Large 	            lg 	            ≥992px
+Extra large 	    xl 	            ≥1200px
+Extra extra large 	xxl 	        ≥1400px
+```
+
+Bootstrap - Utilities - Display  
+
+Hidden on all  
+`d-none`
+
+Hidden only on sm - for tablet and desktop side navigation bar  
+`d-none d-sm-inline`
+
+Visible only on xs - for mobile top navigation bar  
+`d-block d-sm-none`
+
+Visible only on sm - for tablet-mobile top navigation bar  
+`d-none d-sm-inline d-md-none`  
+
+Choose either `-inline` or `-block`.

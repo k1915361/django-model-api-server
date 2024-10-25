@@ -22,7 +22,7 @@ class Choice(models.Model):
     def __str__(self):
         return self.choice_text
 
-class Login(models.Model):
+class Login(models.Model): # Django already has user database with password encryption. DELETE this if no longer used.
     email = models.EmailField(max_length=320)
     password = models.CharField(max_length=128)
     username = models.CharField(max_length=255)

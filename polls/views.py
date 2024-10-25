@@ -57,55 +57,61 @@ def vote(request, question_id):
 
 def logged_in_view(request):
     if not request.user.is_authenticated:
-        return redirect(f"{settings.LOGIN_URL}?next={request.path}")
+        return redirect("/polls/login-view/")
 
     return render(request, "polls/logged_in_page.html")    
 
+def register_view(request, context={}):
+    template_name = "registration/register_view.html"
+    return render(request, template_name, context)
+
 def register(request):
     username = request.POST["username"]
+    password = request.POST["email"]
     password = request.POST["password"]
     
-    if user is None:
-        user = User.objects.create_user(firstname, username, password)        
-    else:
-        "The username is already taken."
+    errors = {}
+    
+    if User.objects.filter(username=username).exists() or User.objects.filter(email=email).exists():
+        errors['error'] = True
+        print(' ------------- 1')
+        # raise ValidationError('Username or email already taken.')
+        response = register_view(request, errors)
+        return response
+        # return render(request, 'registration/register_view.html', {'errors': errors})
 
-def authentication_view(request):
-    print("running authentication_view(request) \n ")
+    print(' ------- 2')
+    # user = User.objects.create_user(username, email, password)
+    # user.save()
+    # login(request, user)
+    # return redirect('/polls/logged-in/')
+    
+def login_view(request):
     template_name = "registration/login_view.html"
-
     return render(request, template_name)
 
-def check_authentication(request):
-    print("running check_authentication(request) \n ")
+def login_user(request):
+    print("running login_user(request) ")
     username = request.POST["username"]
     password = request.POST["password"]
     user = authenticate(request, username=username, password=password)
 
-    print(username, password)
-
-    if user is not None:
+    if user is not None or request.user.is_authenticated:
         login(request, user)
-    else:
-        pass
-    if request.user.is_authenticated:
-        ...
-    else:
-        ...
+        return redirect('/polls/logged-in/')
+    
+    return redirect('/polls/login-view')
 
 def my_view(request):
     if not request.user.is_authenticated:
-
-        """ non-logged-in and non-registered guests:
+        """ 
+        non-logged-in and non-registered guests:
         - can view public models and data
         - can upload and train models
-        """
-        
+        """        
         if "condition " == "data.is_private":
             return redirect(f"{settings.LOGIN_URL}?next={request.path}") 
-
-    if request.user.is_authenticated:
-        
+    if request.user.is_authenticated:        
         "can also view and manage personal private models and data"
 
 def change_password(request):
@@ -134,35 +140,28 @@ def get_queryset(self):
 
 def process_model_options_view(request):
     template_name = "polls/process_model_options.html"
-
     return render(request, template_name)
 
 def human_reinforced_feedback_view(request):
     template_name = "polls/human_reinforced_feedback.html"
-
     return render(request, template_name)
 
 def final_task_analytics_view(request):
     template_name = "polls/final_task_analytics.html"
-
     return render(request, template_name)
 
 def previous_tasks_view(request):
     template_name = "polls/previous_tasks.html"
-
     return render(request, template_name)
 
 def personal_model_repo_view(request):
     template_name = "polls/personal_model_repo.html"
-
     return render(request, template_name)
 
 def personal_dataset_repo_view(request):
     template_name = "polls/personal_dataset_repo.html"
-
     return render(request, template_name)
 
 def personal_dataset_analysis_view(request):
     template_name = "polls/personal_dataset_analysis.html"
-
     return render(request, template_name)
