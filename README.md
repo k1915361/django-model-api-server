@@ -392,6 +392,74 @@ def main():
 ROOT_URLCONF = 'ku_djangoo.urls' 
 ```
 
+## Initialising a Github repository
+git config
+
+Install Git
+```sh
+sudo apt update
+sudo apt upgrade
+sudo apt install git
+```
+
+Initial user setup and make gitignore file 
+```sh
+touch .gitignore
+# https://www.toptal.com/developers/gitignore
+# Search: Django Python
+# Copy content and paste to gitignore file 
+
+git rm --cached FILENAME
+
+git config --global user.email a@example.com
+git config --global user.username ace
+
+touch ~/.gitignore
+code ~/.gitignore
+# Copy-paste the gitignore content and save 
+git config --global core.excludesFile ~/.gitignore
+```
+
+Initialise a Github Repository
+```sh
+git init
+git add .
+```
+
+Commit the repository
+```sh
+# 1st option
+git commit
+# write commit message
+ctrl+o
+ctrl+x
+
+# 2nd option
+git commit -m 'your commit message'
+```
+
+## Installing Github Desktop on Linux
+
+```sh
+wget -qO - https://apt.packages.shiftkey.dev/gpg.key | gpg --dearmor | sudo tee /usr/share/keyrings/shiftkey-packages.gpg > /dev/null
+sudo sh -c 'echo "deb [arch=amd64 signed-by=/usr/share/keyrings/shiftkey-packages.gpg] https://apt.packages.shiftkey.dev/ubuntu/ any main" > /etc/apt/sources.list.d/shiftkey-packages.list'
+
+sudo apt update && sudo apt install github-desktop
+
+github
+```
+
+## Excluding gitignore files 
+
+```sh
+git rm -rf --cached .
+git add .
+
+git commit
+# follow above guide "Commit the repository"
+# or use github desktop
+```
+
 ## Saving Python Packages and versions
 
 ```sh

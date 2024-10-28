@@ -1,0 +1,49 @@
+{% extends "base_logged_in.html" %}
+
+{% block content %}
+
+<div class="container">
+
+<form method="post" action="upload-model/" class="">
+
+<div class="row gap-1 mb-1">
+
+<p class="text-body-secondary">Fields with asterisk "*" are required.</p>
+
+<label for="formModelFile" class="form-label">* Upload Model</label>
+<input name="model" class="form-control" type="file" id="formModelFile" required>
+
+<div class="form-floating">
+    <input type="text" name="modelname" class="form-control" id="floatingModelname" placeholder="OneNet" maxlength="100" required>
+    <label for="floatingModelname">* Model Name</label>
+</div>
+
+<div class="form-floating">
+    <input type="text" name="modeltype" class="form-control" id="floatingModeltype" placeholder="TypeOneNet" maxlength="100" required>
+    <label for="floatingModeltype">* Model Type</label>
+</div>
+
+<div class="form-floating">
+    <input type="text" name="modelurl" class="form-control" id="floatingModelURL" placeholder="https://www.example.com" maxlength="100">
+    <label for="floatingModelURL">Model URL</label>
+</div>
+
+<div class="form-floating">
+    <input type="text" name="modelMetaDescription" class="form-control" id="floatingModelMetaDescription" placeholder="https://www.example.com" maxlength="100">
+    <label for="floatingModelMetaDescription">Model Brief Description</label>
+</div>
+
+<div class="form-floating">
+    <input type="text" name="modelDescription" class="form-control form-control-sm" id="floatingModelDescription" placeholder="https://www.example.com" maxlength="100">
+    <label for="floatingModelDescription">Model Description</label>
+</div>
+
+</div>
+
+<input type="submit" value="upload" class="btn btn-primary">
+
+</form>
+
+</div>
+
+{% endblock %}

@@ -10,6 +10,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.conf import settings
+from django.template import Context, Template
 
 class IndexView(generic.ListView):
     template_name = "polls/index.html"
@@ -55,40 +56,42 @@ def vote(request, question_id):
         # user hits the Back button.
         return HttpResponseRedirect(reverse("polls:results", args=(question.id,)))
 
+def login_message_view(request, context={"please_login_message": "Please login to see this page."}):
+    return login_view(request, context=context)
+
 def logged_in_view(request):
     if not request.user.is_authenticated:
-        return redirect("/polls/login-view/")
+        return login_message_view(request)
 
-    return render(request, "polls/logged_in_page.html")    
+    return render(request, "polls/logged_in_page.html")
 
 def register_view(request, context={}):
     template_name = "registration/register_view.html"
     return render(request, template_name, context)
 
+def register_retry_view(request, context={'retry_register_message': 'Your username or email is already taken. Please try again.'}):
+    return register_view(request, context)
+
 def register(request):
     username = request.POST["username"]
-    password = request.POST["email"]
-    password = request.POST["password"]
-    
-    errors = {}
+    email = request.POST["email"]
     
     if User.objects.filter(username=username).exists() or User.objects.filter(email=email).exists():
-        errors['error'] = True
-        print(' ------------- 1')
-        # raise ValidationError('Username or email already taken.')
-        response = register_view(request, errors)
-        return response
-        # return render(request, 'registration/register_view.html', {'errors': errors})
-
-    print(' ------- 2')
-    # user = User.objects.create_user(username, email, password)
-    # user.save()
-    # login(request, user)
-    # return redirect('/polls/logged-in/')
+        return redirect("/polls/register-retry-view/")
     
-def login_view(request):
+    password = request.POST["password"]
+
+    user = User.objects.create_user(username, email, password)
+    user.save()
+    login(request, user)
+    return redirect('/polls/logged-in/')
+
+def login_view(request, context={}):
     template_name = "registration/login_view.html"
-    return render(request, template_name)
+    return render(request, template_name, context)
+
+def login_retry_view(request, context={'retry_login_message': 'Login was incorrect. Please try again.'}):
+    return login_view(request, context)
 
 def login_user(request):
     print("running login_user(request) ")
@@ -100,7 +103,24 @@ def login_user(request):
         login(request, user)
         return redirect('/polls/logged-in/')
     
-    return redirect('/polls/login-view')
+    return redirect('/polls/login-retry-view/')
+
+def upload_model_view(request, context={}):
+    template_name = "polls/upload_model.html"
+    
+    return render(request, template_name, context)
+
+def upload_model(request):
+    model = request.POST.get("model")
+    modelname = request.POST.get("modelname")
+    modeltype = request.POST.get("modeltype")
+    modelurl = request.POST.get("modelurl")
+    meta_description = request.POST.get("meta_description")
+    description = request.POST.get("description")
+    
+    print(modelname, modeltype, model, modelurl, meta_description, description)
+
+    return redirect()
 
 def my_view(request):
     if not request.user.is_authenticated:
@@ -110,9 +130,7 @@ def my_view(request):
         - can upload and train models
         """        
         if "condition " == "data.is_private":
-            return redirect(f"{settings.LOGIN_URL}?next={request.path}") 
-    if request.user.is_authenticated:        
-        "can also view and manage personal private models and data"
+            return redirect(f"{settings.LOGIN_URL}?next={request.path}")     
 
 def change_password(request):
     if request.method == "POST":

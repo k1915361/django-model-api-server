@@ -8,32 +8,103 @@
 </head>
 
 <body>
-    <div class="container-fluid" id="sidebar">
-        <div class="row flex-nowrap">
-            {% block sidebar %}
-            <div class="col-auto col-md-2 col-xl-2 px-sm-1 px-0 bg-body-tertiary border border-light-subtle d-none d-sm-inline">
-                <div class="d-flex flex-column align-items-center align-items-sm-start px-3 pt-2 text-white min-vh-100">
-                    <ul class="nav nav-pills flex-column mb-sm-auto mb-0 align-items-center align-items-sm-start" id="menu">
+
+    {% block topbar %}
+    <div class="d-flex justify-content-center border border-light-subtle bg-light-subtle">
+        <nav class="navbar navbar-expand-lg">
+            <div class="container-fluid gap-1">
+                <div class="d-flex me-3">
+                    <h4>logo</h4>
+                </div>
+                <form class="d-flex" role="search">
+                    <input class="form-control  " type="search" placeholder="Search models, datasets, users..." aria-label="Search">
+                    <button class="btn btn-outline-secondary" type="submit">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-search" viewBox="0 0 16 16">
+                            <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0"/>
+                            </svg>
+                    </button>
+                </form>
+                <div class="dropdown-center">
+                    <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">                      
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-list" viewBox="0 0 16 16">
+                            <path fill-rule="evenodd" d="M2.5 12a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5"/>
+                          </svg></button>
+                    <ul class="dropdown-menu dropdown-menu-end">
                         <li>
-                            <a href="/polls/logged-in" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">
-                                <i class="fs-4 bi-table"></i> <span class="ms-1 d-none d-sm-inline">Profile View</span></a>
+                            <a href="/polls/logged-in" class="dropdown-item text-black link-dark link-underline-dark link-underline-opacity-0 link-underline-opacity-50-hover">
+                                Profile View
+                            </a>
                         </li>
                         <li>
-                            <a href="/polls/process-model-options/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">
-                                <i class="fs-4 bi-table"></i> <span class="ms-1 d-none d-sm-inline">Start a New Optimisation Task</span></a>
+                            <a href="/polls/process-model-options/" class="dropdown-item text-black link-dark link-underline-dark link-underline-opacity-0 link-underline-opacity-50-hover">
+                                Start a New Optimisation Task</a>
                         </li>                        
                         <li>
-                            <a href="/polls/previous-tasks/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">
-                                <i class="fs-4 bi-table"></i> <span class="ms-1 d-none d-sm-inline">Previous Tasks</span> </a>
+                            <a href="/polls/previous-tasks/" class="dropdown-item text-black link-dark link-underline-dark link-underline-opacity-0 link-underline-opacity-50-hover">
+                                Previous Tasks</a>
                         </li>
 
                         <li>
-                            <a href="/polls/personal-model-repo/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">
-                                <i class="fs-4 bi-table"></i> <span class="ms-1 d-none d-sm-inline">Personal Model Repo</span> </a>
+                            <a href="/polls/personal-model-repo/" class="dropdown-item text-black link-dark link-underline-dark link-underline-opacity-0 link-underline-opacity-50-hover">
+                                Personal Model Repo</a>
                         </li>
                         <li>
-                            <a href="/polls/personal-dataset-repo/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">
-                                <i class="fs-4 bi-table"></i> <span class="ms-1 d-none d-sm-inline">Personal Dataset Repo</span> </a>
+                            <a href="/polls/personal-dataset-repo/" class="dropdown-item text-black link-dark link-underline-dark link-underline-opacity-0 link-underline-opacity-50-hover">
+                                Personal Dataset Repo</a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="/polls/logout/" class="dropdown-item text-black link-dark link-underline-dark link-underline-opacity-0 link-underline-opacity-50-hover">
+                                Log Out
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+                <div class="collapse navbar-collapse" id="navbarTogglerDemo01">
+                    <ul class="navbar-nav mr-auto mb-2 mb-lg-0">
+                        
+                    </ul>
+                </div>
+            </div>
+        </nav>
+    </div>
+    {% endblock %}
+
+    <div class="container-fluid" id="sidebar">
+        <div class="row flex-nowrap">
+            {% block sidebar %}
+            <div class="col-auto col-md-2 col-xl-2 px-sm-1 px-0 bg-light-subtle border border-light-subtle d-none d-sm-inline">
+                <div class="d-flex flex-column align-items-center align-items-sm-start px-3 pt-2 text-white min-vh-100">
+                    <ul class="nav ms-1 mt-3 nav-pills flex-column gap-3 mb-sm-auto mb-0 align-items-center align-items-sm-start" id="menu">
+                        <li>
+                            <a href="/polls/logged-in" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-10 link-underline-opacity-50-hover">
+                                Profile View
+                            </a>
+                        </li>
+                        <li>
+                            <a href="/polls/process-model-options/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-10 link-underline-opacity-50-hover">
+                                Start a New Optimisation Task
+                            </a>
+                        </li>                        
+                        <li>
+                            <a href="/polls/previous-tasks/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-10 link-underline-opacity-50-hover">
+                                Previous Tasks
+                            </a>
+                        </li>
+
+                        <li>
+                            <a href="/polls/personal-model-repo/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-10 link-underline-opacity-50-hover">
+                                Personal Model Repo
+                            </a>
+                        </li>
+                        <li>
+                            <a href="/polls/personal-dataset-repo/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-10 link-underline-opacity-50-hover">
+                                Personal Dataset Repo
+                            </a>
+                        </li>
+                        <li>
+                            <a href="/polls/upload-model-view/" class="bi-table px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-10 link-underline-opacity-50-hover">
+                                Upload Models
+                            </a>
                         </li>
                     </ul>
                     <hr>
