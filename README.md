@@ -232,9 +232,8 @@ python manage.py makemigrations polls
 #     + Create model Question
 #     + Create model Choice
 
-python manage.py sqlmigrate polls 0001
-python manage.py sqlmigrate polls 0002
-python manage.py sqlmigrate polls 0003
+python manage.py sqlmigrate polls 0004
+python manage.py sqlmigrate polls 0005
 
 # BEGIN;
 # --
@@ -251,8 +250,11 @@ python manage.py sqlmigrate polls 0003
 python manage.py migrate
 
 python manage.py shell
+```
 
-# Creating
+## Creating an admin or superuser
+
+```sh
 python manage.py createsuperuser
 
 # Username: admin
@@ -268,7 +270,7 @@ python manage.py runserver
 ## Creating first login database record
 
 ```sh
-# python manage.py shell
+python manage.py shell
 
 from polls.models import Login
 
@@ -284,6 +286,8 @@ l.password
 l.username
 
 Login.objects.all()
+
+# ctrl + z  to exit python shell
 ```
 
 ## Creating first model database record
@@ -495,3 +499,25 @@ Visible only on sm - for tablet-mobile top navigation bar
 `d-none d-sm-inline d-md-none`  
 
 Choose either `-inline` or `-block`.
+
+## Finding history of commands
+
+```sh
+ctrl + r
+
+# search for your past command 
+cd 
+# (reverse-i-search)`cd': cd ~/Documents/ku_django/
+
+# enter if the result command is what you are looking for
+```
+
+## Finding python package version
+
+```sh
+pip list | grep Dj
+# Django 4.2.11
+
+pip --version
+# pip 24.0 from /usr/lib/python3/dist-packages/pip (python 3.12)
+```
