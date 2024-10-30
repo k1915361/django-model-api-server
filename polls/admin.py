@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Model, Dataset, Choice, Question
+from .models import Model, Dataset, Image_Dataset, CSV_Dataset, Choice, Question
 
 
 class QuestionAdmin(admin.ModelAdmin):
@@ -9,6 +9,10 @@ class QuestionAdmin(admin.ModelAdmin):
         ("Date information", {"fields": ["pub_date"]}),
     ]
 
+admin.site.register(Model)
+admin.site.register(CSV_Dataset)
+admin.site.register(Image_Dataset)
+
 admin.site.register(Question, QuestionAdmin)
 admin.site.register(Choice)
-admin.site.register(Model)
+

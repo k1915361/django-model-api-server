@@ -12,6 +12,10 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.conf import settings
 from django.template import Context, Template
+from django.core.files.uploadhandler import MemoryFileUploadHandler, TemporaryFileUploadHandler
+import pprint
+import sys
+import os
 
 class IndexView(generic.ListView):
     template_name = "polls/index.html"
@@ -38,14 +42,35 @@ class ResultsView(generic.DetailView):
 class UploadFileForm(forms.Form):
     title = forms.CharField(max_length=50)
     file = forms.FileField()
+    filepaths = forms.FilePathField(path="asset/user/dataset/public", recursive=True, allow_files=True, allow_folders=True, required=False)
+
+    CHOICES = [
+        ('1', 'private'),
+        ('2', 'public'),
+    ]
+
+    is_public = forms.ChoiceField(
+        label="Choose publicity",
+        widget=forms.RadioSelect,
+        choices=CHOICES, 
+    )
 
 class UploadModelForm(forms.Form):
+    CHOICES = [
+        ('1', 'private'),
+        ('2', 'public'),
+    ]
+
     model = forms.FileField()
     name = forms.CharField(max_length=320)
     model_type = forms.CharField(max_length=320)
-    url = forms.CharField(max_length=2048)
-    description = forms.CharField(max_length=320)
-    is_public = forms.CharField(max_length=7)
+    url = forms.CharField(max_length=2048, required=False)
+    description = forms.CharField(max_length=320, required=False)
+    is_public = forms.ChoiceField(
+        widget=forms.RadioSelect,
+        choices=CHOICES, 
+    )
+
 
 class UploadDatasetForm(forms.Form):
     dataset = forms.FileField()
@@ -54,7 +79,6 @@ class UploadDatasetForm(forms.Form):
     url = forms.CharField(max_length=2048)
     description = forms.CharField(max_length=320)
     is_public = forms.CharField(max_length=7)
-
 
 def vote(request, question_id):
     question = get_object_or_404(Question, pk=question_id)
@@ -81,11 +105,11 @@ def vote(request, question_id):
 def login_message_view(request, context={"please_login_message": "Please login to see this page."}):
     return login_view(request, context=context)
 
-def logged_in_view(request):
+def profile_view(request):
     if not request.user.is_authenticated:
         return login_message_view(request)
 
-    return render(request, "polls/logged_in_page.html")
+    return render(request, "polls/profile.html")
 
 def register_view(request, context={}):
     template_name = "registration/register_view.html"
@@ -152,24 +176,81 @@ def upload_model(request):
 
     return redirect("/polls/upload-model-view/")
 
-def handle_uploaded_file(f):
-    dir_asset_user_dataset = "asset/user/dataset/"
-    dir_asset_user_model = "asset/user/model/"
-    with open(f"{dir_asset_user_model}afile.png", "wb+") as destination:
+def handle_uploaded_file(f, filename='afile', dir="asset/user/dataset/"):
+    with open(f"{dir}{filename}.png", "wb+") as destination:
         for chunk in f.chunks():
             destination.write(chunk)
 
+def save_zip_as_folder(zip_file, dir='asset/user/dataset/', name='', userid=''):
+    names = zip_file.namelist()
+    
+    if not name:
+        from django.utils import timezone
+        name = f"{userid}-{timezone.now().strftime('%Y%m%d_%H%M%S')}"
+
+    extracted_folder_path = os.path.join(dir, name)
+
+    try:
+        os.makedirs(extracted_folder_path, exist_ok=True)
+
+        with zipfile.ZipFile(zip_file, 'r') as archive:
+            for info in archive.infolist():
+                if info.is_dir():
+                    os.makedirs(os.path.join(extracted_folder_path, info.filename))
+                else:
+                    with archive.extract(info, extracted_folder_path) as f:
+                        with open(f, 'wb') as destination:
+                            for chunk in zip_file.chunks():
+                                destination.write(chunk)
+    except err:
+        print(err)
+
+    with zip_file.open(os.path.join(dir, name), "wb+") as destination:
+        for chunk in f.chunks():
+            destination.write(chunk)    
+
 def upload_file(request):
     if request.method == "POST":
-        print("upload_file() POST")
         form = UploadFileForm(request.POST, request.FILES)
+        print("title - ", request.POST.get("title"))
+        print("is_public - ", request.POST.get("is_public"))
+        print("name - ", request.POST.get("name"))
+        print("directories - ", request.POST.get("directories"))
+        print("user ID - ", request.user.id, request.user)
+        
+        zip_file = request.FILES['zip_file']
+        print("zip file - ", request.POST.get("zipfile"))
+
         if form.is_valid():
-            print("upload_file() POST form-is-valid")
-            handle_uploaded_file(request.FILES["file"])
-            print(request.FILES["file"])
+            files = request.FILES.getlist('file')
+            print("fnm - ", files)
+            # for file in files:
+            #     print("fnm - ", file.name)
+                
+                # handle_uploaded_file(request.FILES["file"], dir="asset/user/dataset/")
+
+            # save_folder_to_directory(request.FILES["file"], dir="asset/user/dataset/")
     else:
         form = UploadFileForm()
     return render(request, "polls/upload_file.html", {"form": form})
+
+def upload_model(request):
+    if request.method == "POST":
+        print("upload_model() POST")
+        form = UploadModelForm(request.POST, request.FILES)
+                
+        print("name - ", request.POST.get("name"))
+        print("type - ", request.POST.get("type"))
+        print("url - ", request.POST.get("url"))
+        print("description - ", request.POST.get("description"))
+        print("is_public - ", request.POST.get("is_public"))
+
+        if form.is_valid(): 
+            print("upload_model() POST form-is-valid") 
+            handle_uploaded_file(request.FILES["file"], dir="asset/user/model/") 
+    else:
+        form = UploadModelForm()
+    return render(request, "polls/upload_model.html", {"form": form})
 
 def my_view(request):
     if not request.user.is_authenticated:

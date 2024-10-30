@@ -8,7 +8,7 @@ from . import views
 app_name = 'polls'
 urlpatterns = [
     path("", views.IndexView.as_view(), name="index"),
-    path("logged-in/", views.logged_in_view, name="index"),
+    path("profile/", views.profile_view, name="profile"),
     path("<int:pk>/", views.DetailView.as_view(), name="detail"),
     path("<int:pk>/results/", views.ResultsView.as_view(), name="results"),
     path("<int:question_id>/vote/", views.vote, name="vote"),
@@ -22,6 +22,7 @@ urlpatterns = [
     path("register-view/register/", views.register, name="register"),
     path("register-retry-view/register/", views.register, name="register retry "),
     path("upload-model-view/", views.upload_model_view, name="upload model view"),
+    path("upload-model/", views.upload_model, name="upload model form"),
     path("upload-file/", views.upload_file, name="upload file view"),
     path("upload-model-view/upload/", views.upload_model, name="upload model"),
     path("process-model-options/", views.process_model_options_view, name="process model options"),

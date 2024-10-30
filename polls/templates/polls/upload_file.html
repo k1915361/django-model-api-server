@@ -2,19 +2,89 @@
 
 {% block content %}
 
-<h1>Upload a File</h1>
 
-<form method="post" enctype="multipart/form-data" action="">
+<div class="container">
+
+<h1>Upload a Folder</h1>
+
+<form method="post" enctype="multipart/form-data" action="" >
     {% csrf_token %}
-    <label for="id_title">Title:</label>
-    <input type="text" name="title" id="id_title" required>
-    <br>
 
-    <label for="id_file">File:</label>
-    <input type="file" name="file" id="id_file" required>
+    <div class="form-floating mb-1">
+        <input type="text" name="title" id="id_title" class="form-control" required>
+        <label for="id_title">Title</label>
+    </div>
+
+    <label for="id_folder" class="form-label">Folder:</label>
+    <input type="file" name="file" id="id_folder" class="form-control mb-1" webkitdirectory mozdirectory directory multiple required>
+    <input type="text" id="directories" name="directories" hidden/>
+
+    <label for="id_zip_file" class="form-label">Zip File:</label>
+    <input type="file" accept=".zip,.rar,.7zip" name="zip_file" id="id_zip_file" class="form-control mb-1">
+    <input type="text" id="directories" name="directories" hidden/>
+    
+    <div class="form-floating">
+        <input type="text" name="name" id="id_name" class="form-control mb-1">
+        <label for="id_name">Name</label>
+    </div>
+    
+    <div class="input-group mb-3">
+        {{ form.filepaths.errors }}
+        <label for="id_filepaths" class="input-group-text">File Paths</label>
+        <select type="text" name="filepaths" id="id_filepaths" class="form-select">
+            {% for field in form.filepaths %}
+                <option value=''>{{ field }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    
+    <fieldset>
+        <legend class="fs-6 fw-medium">Publicity</legend>
+        <div class="form-check">
+            <label class="form-check-label" for="id_is_public_0">
+                <input class="form-check-input" type="radio" name="is_public" value="1" id="id_is_public_0" required checked>
+                private
+            </label>
+        </div>
+        <div class="form-check">
+            <label class="form-check-label" for="id_is_public_1">
+                <input class="form-check-input" type="radio" name="is_public" value="2" id="id_is_public_1" required>
+                public
+            </label>
+        </div>
+    </fieldset>
     <br>
+    
+    {% for field in form %}
+        <div class="fieldWrapper ">
+            {{ field.errors }}
+            <label for='{{ field.label_tag }}' >
+                {{ field.label_tag }}
+            </label>
+            <div class="" id='{{ field.label_tag }}'>
+                {{ field }}
+            </div>
+        </div>
+    {% endfor %}
 
     <button type="submit">Upload</button>
 </form>
 
+</div>
+
+<script>
+    files = document.querySelector("#id_folder").files;
+    document.querySelector("#id_folder").addEventListener("change", function() {
+        files = document.querySelector("#id_folder").files;
+        var directories = {}
+        for (var file of files) {
+            file.webkitRelativePath
+            directories[file.name] = file.webkitRelativePath
+        }
+        directories = JSON.stringify(directories);
+        document.querySelector("#directories").value = directories
+    });
+</script>
+
 {% endblock %}
+

@@ -1,41 +1,57 @@
-{% extends "base_login_register_search.html" %}
+{% if user.authenticated %}
+    <p>do extend base_logged_in.html</p>
+{% else if not user.authenticated %}
+    <p>do extend base_login_register_search.html</p>
+{% end if %}
 
-{% load static %}
-
-<link rel="stylesheet" href="{% static 'style.css' %}">
+{% extends "base_logged_in.html" %}
 
 {% block content %}
-
-{% if latest_question_list %}
-    <ul>
-    {% for question in latest_question_list %}
-        <li><a href="{% url 'polls:detail' question.id %}">{{ question.question_text }}</a></li>
-    {% endfor %}
-    </ul>
-{% else %}
-    <p>No polls are available.</p>
-{% endif %}
-
 
 <div class="container">
     <div class="row">
         <div class="col p-3 mb-5 bg-body-tertiary rounded border border-light-subtle">
-            Personal Info
+            <span>List of Top Models</span>
+            <ol>
+                <li><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">
+                    <span class="ms-1 d-none d-sm-inline">A</span></a>
+                </li>
+                <li><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">
+                    <span class="ms-1 d-none d-sm-inline">B</span></a>
+                </li>
+            </ol>
         </div>
         <div class="col p-3 mb-5 bg-body-tertiary rounded border border-light-subtle">
-            Personal Analytics
+            <span>List of Top Datasets</span>
+            <ol>
+                <li><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">
+                    <span class="ms-1 d-none d-sm-inline">A</span></a>
+                </li>
+                <li><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">
+                    <span class="ms-1 d-none d-sm-inline">B</span></a>
+                </li>
+            </ol>
+        </div>
+        <div class="col p-3 mb-5 bg-body-tertiary rounded border border-light-subtle">
+            <span>List of Top of Verified Energy Efficient Tools</span>
+            <ol>
+                <li><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">
+                    <span class="ms-1 d-none d-sm-inline">A</span></a>
+                </li>
+                <li><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">
+                    <span class="ms-1 d-none d-sm-inline">B</span></a>
+                </li>
+            </ol>
         </div>
         <div class="col p-3 mb-5 bg-body-tertiary rounded border border-light-subtle">
             <div class="row p-3 mb-5 bg-body rounded border border-light-subtle">
-                Profile Views
+                <span>News</span>
             </div>
             <div class="row p-3 mb-5 bg-body rounded border border-light-subtle">
-                Overall Green Index
+                <span>General Info About The Platform</span>
             </div>
         </div>
     </div>
 </div>
 
-    
-{% endblock content %}
-    
+{% endblock %}
