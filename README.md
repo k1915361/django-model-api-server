@@ -1,149 +1,5 @@
 # django-model-api-server
 
-## Developer Commands 
-
-```sh
-sudo apt update
-python3 -V
-sudo apt install python3-django
-django-admin --version
-# 4.2.11
-
-python3.11 -m pip list | grep ja
-# Django 4.2.11
-
-sudo apt update
-python3 -V
-sudo apt install python3-pip python3-venv
-sudo apt install python3-dev
-
-# check pip version
-python3.11 -m pip --version
-
-mkdir ~/newproject
-cd ~/newproject
-
-# make env
-python3 -m venv my_env
-# Python 3.12
-# Throughout the whole document, it was tried best to use python 3.11 for stability but using it is causing troubles, stick with 3.12 if preferred. 
-# in practise use `python` or `python3.12 -m` instaed of `python3.11 -m`
-
-# check current env
-python
-import sys
-print(sys.prefix)
-# /home/user/my_env
-# ctrl + z to exit
-# /usr
-
-python3.11 -V
-# Python 3.11.10
-
-cd /home/user/Documents/ku_django/
-source /home/user/my_env/bin/activate
-
-# python3.11 -m pip install django
-pip install django
-
-# A Guide from Writing your first Django app
-# https://docs.djangoproject.com/en/5.1/intro/tutorial01/
-
-# python3.11 -m django --version
-# 4.2.11
-
-python -m django --version
-# 5.1.2
-
-django-admin --version
-# 5.1.2
-
-deactivate
-
-# create a project
-# note make sure to always replace python, python3 and python3.12 to python3.11.
-django-admin startproject ku_django
-cd ku_django/
-
-# python3.11 manage.py runserver
-python manage.py runserver
-
-# create an app
-# make sure to replace "polls" to webapp
-# python3.11 manage.py startapp webapp
-python manage.py startapp webapp
-
-# start django
-cd /home/user/Documents/ku_django/
-source /home/user/my_env/bin/activate
-deactivate
-
-django-admin startproject djangoproject .
-
-# migrate database
-python manage.py migrate
-
-python manage.py createsuperuser
-
-# verify that wired an index view into the URLconf 
-python manage.py runserver
-
-# Writing your first Django app, part 2
-# https://docs.djangoproject.com/en/5.1/intro/tutorial02/
-python manage.py migrate
-
-python3.11 manage.py makemigrations polls
-
-python3.11 manage.py sqlmigrate polls 0001
-
-# run migrate again to create those model tables in your database:
-python3.11 manage.py migrate
-
-# API - Interactive python shell
-python3.11 manage.py shell
-
-from polls.models import Choice, Question  # Import the model classes we just wrote.
-
-# No questions are in the system yet.
-Question.objects.all()
-# <QuerySet []>
-
-# Create a new Question.
-# Support for time zones is enabled in the default settings file, so
-# Django expects a datetime with tzinfo for pub_date. Use timezone.now()
-# instead of datetime.datetime.now() and it will do the right thing.
-from django.utils import timezone
-q = Question(question_text="What's new?", pub_date=timezone.now())
-
-# Save the object into the database. You have to call save() explicitly.
-q.save()
-
-# Now it has an ID.
-q.id
-# 1
-
-# Access model field values via Python attributes.
-q.question_text
-# "What's new?"
-q.pub_date
-# datetime.datetime(2012, 2, 26, 13, 0, 0, 775217, tzinfo=datetime.timezone.utc)
-
-# Change values by changing the attributes, then calling save().
-q.question_text = "What's up?"
-q.save()
-
-# objects.all() displays all the questions in the database.
-Question.objects.all()
-# <QuerySet [<Question: Question object (1)>]>
-
-# ctrl + z  to exit
-
-# delete a environment
-# myenv is in the same directory as terminal current directory 
-rm -r myenv
-
-```
-
 ## Setting up PostgreSQL
 
 ```sh
@@ -201,9 +57,6 @@ ALTER USER postgres with encrypted password 'ku202425';
 sudo echo 'hostssl template1       postgres        192.168.122.1/24        scram-sha-256' | sudo tee -a /etc/postgresql/16/main/pg_hba.conf
 
 sudo systemctl restart postgresql.service
-
-python manage.py makemigrations
-python manage.py migrate
 
 whereis python3.11
 # /usr/bin/python3.11
@@ -556,22 +409,24 @@ def aview(request):
 {% endfor %}
 ```
 
-## Uploading folder to a directory
+## Saving an Uploaded Folder and Zip File to a Directory
 
+Current implementation is seen at `polls/views.py` at function `upload_folder(request)` under the line `for file in files:`.
+
+Below are helpful resources and options to help achieve or improve the implementation. 
+
+Option 1  
+`polls/models.py`  
+<https://stackoverflow.com/questions/65588269/how-can-i-create-an-upload-to-folder-that-is-named-a-field-belonging-to-the-mode>  
 ```py
-
-# polls/models.py
-
-# option 1
-# https://stackoverflow.com/questions/65588269/how-can-i-create-an-upload-to-folder-that-is-named-a-field-belonging-to-the-mode
-
 class Upload(models.Model):
     def user_directory_path(instance, filename):        
         return 'user_{0}/{1}'.format(instance.user.id, filename) # uploaded to MEDIA_ROOT/user_<id>/<filename>
+```
 
-# option 2
-# https://forum.djangoproject.com/t/how-to-zip-files/17197/1
-
+Option 2  
+<https://forum.djangoproject.com/t/how-to-zip-files/17197/1>  
+```py
 class Upload(models.Model):
     uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     def save_folder(instance, filename):
@@ -580,12 +435,12 @@ class Upload(models.Model):
         filename = '{}_{}.{}'.format('classA', instance.uuid, ext)
         return os.path.join(upload_to, filename)
     folder = models.FileField(upload_to=save_folder, null = True , blank = True )
+```
     
-
-# option 3.1
-# upload image instead of folder
-# https://bdvade.hashnode.dev/structuring-file-uploads-in-django
-
+Option 3.1  
+Upload image instead of folder using `models` and `.Field(upload_to=)` with eg. `%Y/%m/%d`, `foldername`, `fn_upload`.  
+<https://bdvade.hashnode.dev/structuring-file-uploads-in-django>  
+```py
 from django.template.defaultfilters import slugify
 
 def category_upload(instance, filename):
@@ -598,15 +453,20 @@ class Article(models.Model):
     category = models.ForeignKey(Category, on_delete=models.CASCADE)
     # 
     # categories/web-development/intro-to-web-development/cover.jpg
+```
 
-# option 3.2
+Option 3.2
+```py
 class Article(models.Model):
     ...
     image = models.ImageField(upload_to='%Y/%m/%d')
     # 
     # 2018/06/12/cover.jpg
 
-# option 3.3
+```
+
+Option 3.3  
+```py
 class Article(models.Model):
     ...
     image = models.ImageField(upload_to='article')
@@ -690,3 +550,131 @@ Choose `Debug: Select and Start Debugging`
 Choose `Python Debugger: DJango`  
 
 Add breakpoints to where you want to view variable content, instead of using print() function.  
+
+## Developer Commands 
+
+```sh
+sudo apt update
+python3 -V
+sudo apt install python3-django
+django-admin --version
+# 4.2.11
+
+python3.11 -m pip list | grep ja
+# Django 4.2.11
+
+sudo apt update
+python3 -V
+sudo apt install python3-pip python3-venv
+sudo apt install python3-dev
+
+# check pip version
+python3.11 -m pip --version
+
+mkdir ~/newproject
+cd ~/newproject
+
+# make env
+python3 -m venv my_env
+# Python 3.12
+# Throughout the whole document, it was tried best to use python 3.11 for stability but using it is causing troubles, stick with 3.12 if preferred. 
+# in practise use `python` or `python3.12 -m` instaed of `python3.11 -m`
+
+# check current env
+python
+import sys
+print(sys.prefix)
+# /home/user/my_env
+# ctrl + z to exit
+# /usr
+
+python3.11 -V
+# Python 3.11.10
+
+cd /home/user/Documents/ku_django/
+source /home/user/my_env/bin/activate
+
+# python3.11 -m pip install django
+pip install django
+
+# A Guide from Writing your first Django app
+# https://docs.djangoproject.com/en/5.1/intro/tutorial01/
+
+# python3.11 -m django --version
+# 4.2.11
+
+python -m django --version
+# 5.1.2
+
+django-admin --version
+# 5.1.2
+
+deactivate
+
+# create a project
+# note make sure to always replace python, python3 and python3.12 to python3.11.
+django-admin startproject ku_django
+cd ku_django/
+
+# python3.11 manage.py runserver
+python manage.py runserver
+
+# create an app
+# make sure to replace "polls" to webapp
+# python3.11 manage.py startapp webapp
+python manage.py startapp webapp
+
+# start django
+cd /home/user/Documents/ku_django/
+source /home/user/my_env/bin/activate
+deactivate
+
+django-admin startproject djangoproject .
+
+# Writing your first Django app, part 2
+# https://docs.djangoproject.com/en/5.1/intro/tutorial02/
+
+# API - Interactive python shell
+python3.11 manage.py shell
+
+from polls.models import Choice, Question  # Import the model classes we just wrote.
+
+# No questions are in the system yet.
+Question.objects.all()
+# <QuerySet []>
+
+# Create a new Question.
+# Support for time zones is enabled in the default settings file, so
+# Django expects a datetime with tzinfo for pub_date. Use timezone.now()
+# instead of datetime.datetime.now() and it will do the right thing.
+from django.utils import timezone
+q = Question(question_text="What's new?", pub_date=timezone.now())
+
+# Save the object into the database. You have to call save() explicitly.
+q.save()
+
+# Now it has an ID.
+q.id
+# 1
+
+# Access model field values via Python attributes.
+q.question_text
+# "What's new?"
+q.pub_date
+# datetime.datetime(2012, 2, 26, 13, 0, 0, 775217, tzinfo=datetime.timezone.utc)
+
+# Change values by changing the attributes, then calling save().
+q.question_text = "What's up?"
+q.save()
+
+# objects.all() displays all the questions in the database.
+Question.objects.all()
+# <QuerySet [<Question: Question object (1)>]>
+
+# ctrl + z  to exit
+
+# delete a environment
+# myenv is in the same directory as terminal current directory 
+rm -r myenv
+
+```
