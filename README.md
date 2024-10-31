@@ -505,7 +505,7 @@ The root issue is unknown yet.
 The issue was found. 
 
 1. There were two duplicate hidden input for storing directories.
-2. Second possible issue is that the location of the JavaScript was placed outside of a 'div' document container, whereas it should be placed right under the form document - under where the "</form>" ends. 
+2. Second possible issue is that the location of the JavaScript was placed outside of a 'div' document container, whereas it should be placed right under the form document - under where the `</form>` ends. 
 
 Option 5  
 Uploading Zip file and save as is.  
