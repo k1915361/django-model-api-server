@@ -10,6 +10,7 @@ class QuestionAdmin(admin.ModelAdmin):
     ]
 
 admin.site.register(Model)
+admin.site.register(Dataset)
 admin.site.register(CSV_Dataset)
 admin.site.register(Image_Dataset)
 

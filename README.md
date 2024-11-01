@@ -88,6 +88,8 @@ python manage.py makemigrations polls
 python manage.py sqlmigrate polls 0004
 python manage.py sqlmigrate polls 0005
 python manage.py sqlmigrate polls 0006
+python manage.py sqlmigrate polls 0007
+python manage.py sqlmigrate polls 0008
 
 # BEGIN;
 # --
@@ -102,8 +104,6 @@ python manage.py sqlmigrate polls 0006
 # COMMIT;
 
 python manage.py migrate
-
-python manage.py shell
 ```
 
 ## Creating an admin or superuser

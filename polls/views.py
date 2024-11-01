@@ -1,13 +1,14 @@
 from django import forms
 from django.db.models import F
 from django.http import HttpResponseRedirect
-from .models import Question, Choice
+from .models import Dataset, Question, Choice
 from django.urls import reverse
 from django.utils import timezone
 from django.views import generic
 
 from django.shortcuts import get_object_or_404, render, redirect
 from django.contrib.auth.models import User
+
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.conf import settings
@@ -19,7 +20,7 @@ import sys
 import os
 import ast
 
-dataset_dir = 'asset/user/dataset/'
+ROOT_DATASET_DIR = 'asset/user/dataset/'
 
 is_public_map_bool = {
     '1': False, '2': True, 
@@ -53,12 +54,12 @@ class ResultsView(generic.DetailView):
     model = Question
     template_name = "polls/results.html"
 
-class UploadFileForm(forms.Form):
-    title = forms.CharField(max_length=50, required=False)
-    file = forms.FileField(required=False)
-    filepaths = forms.FilePathField(path=f"{dataset_dir}public", recursive=True, allow_files=True, allow_folders=True, required=False)
-    zipfile = forms.FileField(required=False)
+class UploadDatasetForm(forms.Form):
+    name = forms.CharField(max_length=320)
+    dataset = forms.FileField(required=False) # True
+    zipfile = forms.FileField(required=False)  
     directories = forms.CharField(required=False)
+    filepaths = forms.FilePathField(path=f"{ROOT_DATASET_DIR}public", recursive=True, allow_files=True, allow_folders=True, required=False)
 
     CHOICES = [
         ('1', 'private'),
@@ -87,15 +88,6 @@ class UploadModelForm(forms.Form):
         widget=forms.RadioSelect,
         choices=CHOICES, 
     )
-
-
-class UploadDatasetForm(forms.Form):
-    dataset = forms.FileField()
-    name = forms.CharField(max_length=320)
-    dataset_type = forms.CharField(max_length=320)
-    url = forms.CharField(max_length=2048)
-    description = forms.CharField(max_length=320)
-    is_public = forms.CharField(max_length=7)
 
 def vote(request, question_id):
     question = get_object_or_404(Question, pk=question_id)
@@ -201,63 +193,75 @@ def handle_uploaded_file(f, filename='afile', dir="asset/user/dataset/", file_ex
 def now_Ymd_HMS(format='%Y%m%d_%H%M%S'):
     return timezone.now().strftime(format)
 
+def get_home_directory(directories):
+    for directory in directories:
+        for sep in ['/', '\\\\', '\\']:
+            if sep in directory:
+                return directory.split(sep)[0]
+    return ''
+
+def unzip_and_save(zipfile_dir, name, user, ispublic, timestamp):
+    
+
+    return
+
+def save_zip_file(zipfile, name, user, ispublic):
+    save_dir = os.path.join(ROOT_DATASET_DIR, is_public_map_label[ispublic], str(user.id))
+    timestamp = now_Ymd_HMS()
+    save_filename = f'{timestamp}-{zipfile.name}'
+    zipfile_dir = os.path.join(save_dir, save_filename)
+
+    FileSystemStorage(location=save_dir).save(save_filename, zipfile) 
+    dataset = Dataset(name=name, user=user, dataset_directory=zipfile_dir, is_public=is_public_map_bool[ispublic])
+    dataset.save()
+    return zipfile_dir, timestamp
+
+def save_folder(files, directories, name, user, ispublic):
+    home_directory = get_home_directory(directories.values())
+    timestamp = now_Ymd_HMS()
+    dataset_dir = os.path.join(ROOT_DATASET_DIR, is_public_map_label[ispublic], str(user.id), f"{timestamp}-{home_directory}")
+
+    for file in files:
+        relative_file_path = directories.get(file.name)
+        relative_file_directory, _ = os.path.split(relative_file_path)
+        
+        file_dir = os.path.join(ROOT_DATASET_DIR, is_public_map_label[ispublic], str(user.id), f"{timestamp}-{relative_file_directory}")
+        os.makedirs(file_dir, exist_ok=True)
+        
+        handle_uploaded_file(file, filename=file.name, dir=file_dir)
+
+    dataset = Dataset(name=name, user=user, dataset_directory=dataset_dir, is_public=is_public_map_bool[ispublic])
+    dataset.save()
+    return
+
 def upload_folder(request):
-    if request.method == "POST":
-        form = UploadFileForm(request.POST, request.FILES)
-        ispublic = request.POST.get("is_public")
-        ispublic_lbl = is_public_map_label[ispublic]
-        userid = str(request.user.id)
-        title = request.POST.get("title")
-        name = request.POST.get("name")
-        directories_str = request.POST.get("directories")
+    if request.method != "POST":
+        form = UploadDatasetForm()
+        return render(request, "polls/upload_folder.html", {"form": form})
+    
+    form = UploadDatasetForm(request.POST, request.FILES)
+    ispublic = request.POST.get("is_public")
+    
+    name = request.POST.get("name")
+    directories_str = request.POST.get("directories")
+    
+    if directories_str:
         directories = ast.literal_eval(directories_str)
 
-        zipfile_list = request.FILES.getlist('zipfile')
-        
-        if len(zipfile_list) != 0:
-            zipfile = zipfile_list.get(0) # <TemporaryUploadedFile: CS_dataset.7z (application/x-7z-compressed)>
-            zipfile_ = zipfile_list.get('0') 
-            temp_upload_dir = zipfile.file.name
-        
-            save_dir = ''
-            save_filename = ''
-            folder_dir = ''
+    zipfile_list = request.FILES.getlist('zipfile')
 
-            if ispublic_lbl == 'private':
-                save_dir = os.path.join(dataset_dir, ispublic_lbl, userid)
-                save_filename = f'{now_Ymd_HMS()}-{zipfile.name}'
-                
-            if ispublic_lbl == 'public':
-                save_dir = os.path.join(dataset_dir, ispublic_lbl)
-                save_filename = f'{userid}-{now_Ymd_HMS()}-{zipfile.name}'
-            
-            FileSystemStorage(location=save_dir).save(save_filename, zipfile)
+    if len(zipfile_list) != 0:
+        zipfile = zipfile_list[0] 
 
-            folder_dir = os.path.join(save_dir, save_filename)
-        
-        if form.is_valid():
-            files = request.FILES.getlist('file')
+        zipfile_dir, timestamp = save_zip_file(zipfile, name, request.user, ispublic)
 
-            for file in files:
-                file_path = directories.get(file.name)
-                directory, filename = os.path.split(file_path)
-                
-                # if ispublic_lbl == 'private':
-                #     continue
-                # if ispublic_lbl == 'public':
-                #     save_filename = f'{ispublic_lbl}-{filename}'
-                #     ispublic_lbl = ''
-                
-                save_dir = os.path.join(dataset_dir, ispublic_lbl, userid, directory)
-                save_path = os.path.join(save_dir, filename)
-                os.makedirs(save_dir, exist_ok=True)
-                
-                handle_uploaded_file(file, filename=filename, dir=save_dir)
-                print(" - ", save_dir, save_path)
+        unzip_and_save(zipfile_dir, name, request.user, ispublic, timestamp)
 
-            # save_folder_to_directory(request.FILES["file"], dir="asset/user/dataset/")
-    else:
-        form = UploadFileForm()
+    files = request.FILES.getlist('file')
+
+    if form.is_valid() and len(files) != 0 and len(directories) != 0:
+        save_folder(files, directories, name, request.user, ispublic)
+
     return render(request, "polls/upload_folder.html", {"form": form})
 
 def upload_model(request):

@@ -26,7 +26,7 @@ class Choice(models.Model):
 
 class Model(models.Model):
     name = models.CharField(max_length=320)
-    user_id = models.ForeignKey(User, on_delete=models.SET_NULL, null=True) 
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True) 
 
     model_type = models.CharField(max_length=320)
     file_path = models.CharField(max_length=2048)
@@ -42,9 +42,9 @@ class Model(models.Model):
     
 class Dataset(models.Model):
     name = models.CharField(max_length=320)
-    user_id = models.ForeignKey(User, on_delete=models.SET_NULL, null=True) 
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True) 
     
-    file_path = models.CharField(max_length=2048)
+    dataset_directory = models.CharField(max_length=2048)
     is_public = models.BooleanField(default=False)
 
     description = models.CharField(max_length=320, blank=True) 
@@ -54,9 +54,9 @@ class Dataset(models.Model):
 
 class Image_Dataset(models.Model):
     name = models.CharField(max_length=320)
-    user_id = models.ForeignKey(User, on_delete=models.SET_NULL, null=True) 
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True) 
     
-    file_path = models.CharField(max_length=2048)
+    dataset_directory = models.CharField(max_length=2048)
     is_public = models.BooleanField(default=False)
 
     description = models.CharField(max_length=320, blank=True) 
@@ -66,9 +66,9 @@ class Image_Dataset(models.Model):
 
 class CSV_Dataset(models.Model):
     name = models.CharField(max_length=320)
-    user_id = models.ForeignKey(User, on_delete=models.SET_NULL, null=True) 
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True) 
     
-    file_path = models.CharField(max_length=2048)
+    dataset_directory = models.CharField(max_length=2048)
     is_public = models.BooleanField(default=False)
 
     description = models.CharField(max_length=320, blank=True) 
