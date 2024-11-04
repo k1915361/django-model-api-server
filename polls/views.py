@@ -5,6 +5,7 @@ from .models import Dataset, Question, Choice
 from django.urls import reverse
 from django.utils import timezone
 from django.views import generic
+from django.core.paginator import Paginator
 
 from django.shortcuts import get_object_or_404, render, redirect
 from django.contrib.auth.models import User
@@ -15,7 +16,6 @@ from django.conf import settings
 from django.template import Context, Template
 from django.core.files.uploadhandler import MemoryFileUploadHandler, TemporaryFileUploadHandler
 from django.core.files.storage import FileSystemStorage
-import pprint
 import sys
 import os
 import ast
@@ -30,16 +30,8 @@ is_public_map_bool = {
 
 is_public_map_label = {
     '1': 'private', '2': 'public', 
+    'private' :'1', 'public': '2', 
 }
-
-class IndexView(generic.ListView):
-    template_name = "polls/index.html"
-    context_object_name = "latest_question_list"
-
-    def get_queryset(self):
-        """Return the last five published questions."""
-        return Question.objects.order_by("-pub_date")[:5]
-
 class DetailView(generic.DetailView):
     model = Question
     template_name = "polls/detail.html"
@@ -89,6 +81,36 @@ class UploadModelForm(forms.Form):
         choices=CHOICES, 
     )
 
+class UserDatasetListPathsForm(forms.Form):
+    def __init__(self, userid, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.userid = userid
+
+        self.fields['filepaths_public'] = forms.FilePathField(
+            path=f"{ROOT_DATASET_DIR}public/{self.userid}",
+            recursive=True,
+            allow_files=True,
+            allow_folders=True,
+            required=False,
+        )
+
+        self.fields['filepaths_private'] = forms.FilePathField(
+            path=f"{ROOT_DATASET_DIR}private/{self.userid}",
+            recursive=True,
+            allow_files=True,
+            allow_folders=True,
+            required=False,
+        )
+    
+class PublicDatasetListPaginationView(forms.Form):
+    paginate_by = 10
+    model = Dataset    
+
+class PrivateDatasetListPaginationView(forms.Form):
+    paginate_by = 10
+    model = Dataset    
+
+
 def vote(request, question_id):
     question = get_object_or_404(Question, pk=question_id)
     try:
@@ -115,6 +137,8 @@ def login_message_view(request, context={"please_login_message": "Please login t
     return login_view(request, context=context)
 
 def profile_view(request):
+    base_html = get_base_html(request.user.is_authenticated)    
+    
     if not request.user.is_authenticated:
         return login_message_view(request)
 
@@ -139,7 +163,7 @@ def register(request):
     user = User.objects.create_user(username, email, password)
     user.save()
     login(request, user)
-    return redirect('/polls/logged-in/')
+    return redirect('/polls/profile/')
 
 def login_view(request, context={}):
     template_name = "registration/login_view.html"
@@ -156,7 +180,7 @@ def login_user(request):
 
     if user is not None or request.user.is_authenticated:
         login(request, user)
-        return redirect('/polls/logged-in/')
+        return redirect('/polls/profile/')
     
     return redirect('/polls/login-retry-view/')
 
@@ -165,6 +189,66 @@ def upload_model_view(request, context={}):
     
     return render(request, template_name, context)
 
+def get_base_html(user_is_authenticated):
+    if user_is_authenticated:
+        return "base_logged_in.html"
+    elif not user_is_authenticated:
+        return "base_login_register_search.html"
+
+def public_dataset_list_view(request, context={}):
+    template_name = "polls/public_dataset_list_view.html"
+    base_html = get_base_html(request.user.is_authenticated)
+    
+    dataset_list = Dataset.objects.filter(is_public=True).order_by("-created")
+    paginator = Paginator(dataset_list, 2)
+    page_number = request.GET.get("page")
+    page_obj = paginator.get_page(page_number)
+    context = { 'base_html': base_html, 'page_obj': page_obj }
+
+    if request.method != "POST":
+        context['form'] = PublicDatasetListPaginationView()
+        return render(request, template_name, context)
+
+    context['form'] = PublicDatasetListPaginationView()
+    return render(request, template_name, context)
+
+def private_dataset_list_view(request, context={}):
+    template_name = "polls/private_dataset_list_view.html"
+    base_html = get_base_html(request.user.is_authenticated)
+
+    dataset_list = Dataset.objects.filter(is_public=False, user=request.user).order_by("-created")
+    paginator = Paginator(dataset_list, 2)
+    page_number = request.GET.get("page")
+    page_obj = paginator.get_page(page_number)
+    context = { 'base_html': base_html, 'page_obj': page_obj }
+
+    context['form'] = PrivateDatasetListPaginationView()
+    return render(request, template_name, context)
+
+def index_homepage_view(request):
+    template_name = "polls/index.html"
+    base_html = get_base_html(request.user.is_authenticated)
+    
+    dataset_list = Dataset.objects.filter(is_public=True).order_by("-created")
+    paginator = Paginator(dataset_list, 2)
+    page_number = request.GET.get("page")
+    dataset_page_obj = paginator.get_page(page_number)
+    context = { 'base_html': base_html, 'dataset_page_obj': dataset_page_obj }
+
+    return render(request, template_name, context)
+
+def user_dataset_list_path_view(request, context={}):
+    template_name = "polls/user_dataset_list_path_view.html"
+    base_html = get_base_html(request.user.is_authenticated)
+    context = {'base_html': base_html}
+
+    if request.method != "POST":
+        context['form'] = UserDatasetListPathsForm(request.user.id)
+        return render(request, template_name, context)
+    
+    context['form'] = UserDatasetListPathsForm(request.user.id, request.POST, request.FILES)
+    return render(request, template_name, context)
+    
 def upload_model(request):
     model = request.POST.get("model")
     model_file = request.FILES.get("model")
@@ -174,15 +258,6 @@ def upload_model(request):
     meta_description = request.POST.get("meta_description")
     description = request.POST.get("description")
     
-    print("files", request.FILES)
-    print("model file", model_file)
-    print("modelname", modelname)
-    print("modeltype", modeltype)
-    print("model", model)
-    print("modelurl", modelurl)
-    print("meta_description", meta_description)
-    print("description", description)
-
     return redirect("/polls/upload-model-view/")
 
 def handle_uploaded_file(f, filename='afile', dir="asset/user/dataset/", file_extension=''):
@@ -201,8 +276,6 @@ def get_home_directory(directories):
     return ''
 
 def unzip_and_save(zipfile_dir, name, user, ispublic, timestamp):
-    
-
     return
 
 def save_zip_file(zipfile, name, user, ispublic):
@@ -231,6 +304,7 @@ def save_folder(files, directories, name, user, ispublic):
         handle_uploaded_file(file, filename=file.name, dir=file_dir)
 
     dataset = Dataset(name=name, user=user, dataset_directory=dataset_dir, is_public=is_public_map_bool[ispublic])
+    print(' - - - - ', ispublic, type(ispublic), is_public_map_bool[ispublic])
     dataset.save()
     return
 
@@ -268,12 +342,6 @@ def upload_model(request):
     if request.method == "POST":
         print("upload_model() POST")
         form = UploadModelForm(request.POST, request.FILES)
-                
-        print("name - ", request.POST.get("name"))
-        print("type - ", request.POST.get("type"))
-        print("url - ", request.POST.get("url"))
-        print("description - ", request.POST.get("description"))
-        print("is_public - ", request.POST.get("is_public"))
 
         if form.is_valid(): 
             print("upload_model() POST form-is-valid") 
@@ -281,16 +349,6 @@ def upload_model(request):
     else:
         form = UploadModelForm()
     return render(request, "polls/upload_model.html", {"form": form})
-
-def my_view(request):
-    if not request.user.is_authenticated:
-        """ 
-        non-logged-in and non-registered guests:
-        - can view public models and data
-        - can upload and train models
-        """        
-        if "condition " == "data.is_private":
-            return redirect(f"{settings.LOGIN_URL}?next={request.path}")     
 
 def change_password(request):
     if request.method == "POST":

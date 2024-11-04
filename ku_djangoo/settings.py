@@ -30,7 +30,7 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
-LOGIN_REDIRECT_URL = '/polls/logged-in'
+LOGIN_REDIRECT_URL = '/polls/login-view'
 
 # Application definition
 

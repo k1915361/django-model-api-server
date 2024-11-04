@@ -6,7 +6,7 @@ from . import views
 
 app_name = 'polls'
 urlpatterns = [
-    path("", views.IndexView.as_view(), name="index"),
+    path("", views.index_homepage_view, name="index"),
     path("profile/", views.profile_view, name="profile"),
     path("<int:pk>/", views.DetailView.as_view(), name="detail"),
     path("<int:pk>/results/", views.ResultsView.as_view(), name="results"),
@@ -23,6 +23,10 @@ urlpatterns = [
     path("upload-model-view/", views.upload_model_view, name="upload model view"),
     path("upload-model/", views.upload_model, name="upload model form"),
     path("upload-folder/", views.upload_folder, name="upload folder view"),
+    path("public-dataset-list-view/", views.public_dataset_list_view, name="public dataset list view"),
+    path("public-dataset-data-view:<int:pk>/", views.public_dataset_list_view, name="public-dataset-data-view"),
+    path("private-dataset-list-view/", views.private_dataset_list_view, name="private-dataset-list-view"),
+    path("user_dataset_list_path_view/", views.user_dataset_list_path_view, name="user_dataset_list_path_view"),
     path("upload-model-view/upload/", views.upload_model, name="upload model"),
     path("process-model-options/", views.process_model_options_view, name="process model options"),
     path("human-reinforced-feedback/", views.human_reinforced_feedback_view, name="human reinforced feedback view"),

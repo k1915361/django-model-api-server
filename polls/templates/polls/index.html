@@ -1,10 +1,4 @@
-{% if user.authenticated %}
-    <p>do extend base_logged_in.html</p>
-{% else if not user.authenticated %}
-    <p>do extend base_login_register_search.html</p>
-{% end if %}
-
-{% extends "base_logged_in.html" %}
+{% extends base_html %}
 
 {% block content %}
 
@@ -14,23 +8,59 @@
             <span>List of Top Models</span>
             <ol>
                 <li><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">
-                    <span class="ms-1 d-none d-sm-inline">A</span></a>
+                    A</a>
                 </li>
                 <li><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">
-                    <span class="ms-1 d-none d-sm-inline">B</span></a>
+                    B</a>
                 </li>
             </ol>
         </div>
         <div class="col p-3 mb-5 bg-body-tertiary rounded border border-light-subtle">
-            <span>List of Top Datasets</span>
-            <ol>
-                <li><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">
-                    <span class="ms-1 d-none d-sm-inline">A</span></a>
-                </li>
-                <li><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">
-                    <span class="ms-1 d-none d-sm-inline">B</span></a>
-                </li>
-            </ol>
+            <h5>List of top datasets</h5>
+            <div class="row bg-body-tertiary" style="height: 200px; overflow:scroll;">
+                <div class="" >
+                    <div data-bs-spy="scroll" data-bs-target="#navbar-example3" data-bs-smooth-scroll="true" class="scrollspy-example-2" tabindex="0">
+                        {% if dataset_page_obj %}
+                            <div>
+                                {% for data in dataset_page_obj %}
+                                    <div style="white-space: nowrap;">
+                                        <a class="fw-semibold" temphref="url 'polls:public-dataset-data-view/?page=' data.id" href="#">{{ data.name }}</a>
+                                        <span>
+                                            <span class="fw-medium"> {{ data.user }}</span> 
+                                            <span class="fw-lighter overflow-x-scroll" style="width: 240px; overflow-x: scroll;">{{ data.updated }}</span>
+                                        </span>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <p>No Dataset are available.</p>
+                        {% endif %}
+                        <div id="item-A"><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">dataset A</a></div>
+                        <div id="item-B"><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">dataset B</a></div>
+                        <div id="item-C"><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">dataset C</a></div>
+                        <div id="item-D"><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">dataset D</a></div>
+                        <div id="item-E"><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">dataset E</a></div>
+                        <div id="item-F"><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">dataset F</a></div>
+                        <div class="pagination">
+                            <span class="step-links">
+                                {% if dataset_page_obj.has_previous %}
+                                    <a href="?page=1" class="btn btn-primary">&laquo; first</a>
+                                    <a href="?page={{ dataset_page_obj.previous_page_number }}" class="btn btn-primary">previous</a>
+                                {% endif %}
+
+                                <span class="current">
+                                    Page {{ dataset_page_obj.number }} of {{ dataset_page_obj.paginator.num_pages }}.
+                                </span>
+
+                                {% if dataset_page_obj.has_next %}
+                                    <a href="?page={{ dataset_page_obj.next_page_number }}" class="btn btn-primary">next</a>
+                                    <a href="?page={{ dataset_page_obj.paginator.num_pages }}" class="btn btn-primary">last &raquo;</a>
+                                {% endif %}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
         <div class="col p-3 mb-5 bg-body-tertiary rounded border border-light-subtle">
             <span>List of Top of Verified Energy Efficient Tools</span>
@@ -53,5 +83,6 @@
         </div>
     </div>
 </div>
+
 
 {% endblock %}

@@ -11,7 +11,7 @@
     {% endif %}
 {% endif %}
    
-<div class="container">
+<div class="container mt-5">
 
 {{ retry_login_message }}
     
@@ -20,7 +20,7 @@
 <form method="post" action="login/">
 {% csrf_token %}
 
-<div class="container row g-3 align-items-center mt-2">
+<div class="align-items-center">
     <div class="form-floating mb-3">
         <input type="text" name="username" class="form-control" id="floatingUsername" placeholder="ace@example.com" maxlength="100" required>
         <label for="floatingUsername">Username</label>
