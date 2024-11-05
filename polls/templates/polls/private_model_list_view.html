@@ -4,24 +4,22 @@
 
 <div class="container">
 
-<h1>Public Dataset</h1>
+<h1>Private Models</h1>
 
 {% csrf_token %}
 
 {% if page_obj %}
-    <div>
-        {% for data in page_obj %}
-            <div>
-                <a class="fw-semibold" temphref="url 'polls:public-dataset-data-view/?page=' data.id" href="#">
-                    {{ data.name }}
-                </a>
-                <span>
-                    <span class="fw-medium">{{ data.user }}</span> 
-                    <span class="fw-lighter">{{ data.updated }}</span>
-                </span>
-            </div>
-        {% endfor %}
-    </div>
+<div>
+    {% for data in page_obj %}
+        <div>
+            <a class="fw-semibold" temphref="url 'polls:private-dataset-data-view/?page=' data.id" href="#">{{ data.name }}</a>
+            <span>
+                <span class="fw-medium"> {{ data.user }}</span> 
+                <span class="fw-lighter">{{ data.updated }}</span>                
+            </span>
+        </div>
+    {% endfor %}
+</div>
 {% else %}
     <p>No Dataset are available.</p>
 {% endif %}

@@ -29,7 +29,7 @@ class Model(models.Model):
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True) 
 
     model_type = models.CharField(max_length=320)
-    file_path = models.CharField(max_length=2048)
+    model_directory = models.CharField(max_length=2048)
     is_public = models.BooleanField(default=False) 
 
     description = models.CharField(max_length=320, blank=True) 

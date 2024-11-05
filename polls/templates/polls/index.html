@@ -3,49 +3,92 @@
 {% block content %}
 
 <div class="container">
-    <div class="row">
+    <div class="row mt-5">
         <div class="col p-3 mb-5 bg-body-tertiary rounded border border-light-subtle">
-            <span>List of Top Models</span>
-            <ol>
-                <li><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">
-                    A</a>
-                </li>
-                <li><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">
-                    B</a>
-                </li>
-            </ol>
+            <a href="/polls/public-model-list-view/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">
+                <p>List of Top Models</p>
+            </a>
+            <div class="" style="height: 200px; overflow:scroll;">
+                <div data-bs-spy="scroll" data-bs-target="#navbar-example3" data-bs-smooth-scroll="true" class="scrollspy-example-2" tabindex="0">
+                    {% if model_page_obj %}
+                        <ol>
+                            {% for data in model_page_obj %}
+                                <li style="white-space: nowrap;">
+                                    <a class="fw-semibold" temphref="url 'polls:public-model-data-view/?page=' data.id" href="#">{{ data.name }}</a>
+                                    <span>
+                                        <span class="fw-medium"> {{ data.user }}</span> 
+                                        <span class="fw-lighter overflow-x-scroll" style="width: 240px; overflow-x: scroll;">{{ data.updated }}</span>
+                                    </span>
+                                </li>
+                            {% endfor %}
+                        </ol>
+                    {% else %}
+                        <p>No model are available.</p>
+                    {% endif %}
+                    <ol>
+                        <li id="item-A"><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">model A</a></li>
+                        <li id="item-B"><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">model B</a></li>
+                        <li id="item-C"><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">model C</a></li>
+                        <li id="item-D"><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">model D</a></li>
+                        <li id="item-E"><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">model E</a></li>
+                        <li id="item-F"><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">model F</a></li>
+                        <li id="item-G"><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">model G</a></li>
+                    </ol>
+                    <div class="pagination">
+                        <span class="step-links">
+                            {% if model_page_obj.has_previous %}
+                                <a href="?model_page=1" class="btn btn-primary">&laquo; first</a>
+                                <a href="?model_page={{ model_page_obj.previous_page_number }}" class="btn btn-primary">previous</a>
+                            {% endif %}
+
+                            <span class="current">
+                                Page {{ model_page_obj.number }} of {{ model_page_obj.paginator.num_pages }}.
+                            </span>
+
+                            {% if model_page_obj.has_next %}
+                                <a href="?model_page={{ model_page_obj.next_page_number }}" class="btn btn-primary">next</a>
+                                <a href="?model_page={{ model_page_obj.paginator.num_pages }}" class="btn btn-primary">last &raquo;</a>
+                            {% endif %}
+                        </span>
+                    </div>
+                </div>
+            </div>
         </div>
         <div class="col p-3 mb-5 bg-body-tertiary rounded border border-light-subtle">
-            <h5>List of top datasets</h5>
+            <a href="/polls/public-dataset-list-view/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">
+                <p>List of top datasets</p>
+            </a>
             <div class="row bg-body-tertiary" style="height: 200px; overflow:scroll;">
                 <div class="" >
                     <div data-bs-spy="scroll" data-bs-target="#navbar-example3" data-bs-smooth-scroll="true" class="scrollspy-example-2" tabindex="0">
                         {% if dataset_page_obj %}
-                            <div>
+                            <ol>
                                 {% for data in dataset_page_obj %}
-                                    <div style="white-space: nowrap;">
+                                    <li style="white-space: nowrap;">
                                         <a class="fw-semibold" temphref="url 'polls:public-dataset-data-view/?page=' data.id" href="#">{{ data.name }}</a>
                                         <span>
                                             <span class="fw-medium"> {{ data.user }}</span> 
                                             <span class="fw-lighter overflow-x-scroll" style="width: 240px; overflow-x: scroll;">{{ data.updated }}</span>
                                         </span>
-                                    </div>
+                                    </li>
                                 {% endfor %}
-                            </div>
+                            </ol>
                         {% else %}
                             <p>No Dataset are available.</p>
                         {% endif %}
-                        <div id="item-A"><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">dataset A</a></div>
-                        <div id="item-B"><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">dataset B</a></div>
-                        <div id="item-C"><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">dataset C</a></div>
-                        <div id="item-D"><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">dataset D</a></div>
-                        <div id="item-E"><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">dataset E</a></div>
-                        <div id="item-F"><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">dataset F</a></div>
+                        <ol>
+                            <li id="item-A"><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">dataset A</a></li>
+                            <li id="item-B"><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">dataset B</a></li>
+                            <li id="item-C"><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">dataset C</a></li>
+                            <li id="item-D"><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">dataset D</a></li>
+                            <li id="item-E"><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">dataset E</a></li>
+                            <li id="item-F"><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">dataset F</a></li>
+                        </ol>                        
                         <div class="pagination">
                             <span class="step-links">
                                 {% if dataset_page_obj.has_previous %}
-                                    <a href="?page=1" class="btn btn-primary">&laquo; first</a>
-                                    <a href="?page={{ dataset_page_obj.previous_page_number }}" class="btn btn-primary">previous</a>
+                                    <a href="?dataset_page=1" class="btn btn-primary">&laquo; first</a>
+                                    <a href="?dataset_page={{ dataset_page_obj.previous_page_number }}" class="btn btn-primary">previous</a>
                                 {% endif %}
 
                                 <span class="current">
@@ -53,8 +96,8 @@
                                 </span>
 
                                 {% if dataset_page_obj.has_next %}
-                                    <a href="?page={{ dataset_page_obj.next_page_number }}" class="btn btn-primary">next</a>
-                                    <a href="?page={{ dataset_page_obj.paginator.num_pages }}" class="btn btn-primary">last &raquo;</a>
+                                    <a href="?dataset_page={{ dataset_page_obj.next_page_number }}" class="btn btn-primary">next</a>
+                                    <a href="?dataset_page={{ dataset_page_obj.paginator.num_pages }}" class="btn btn-primary">last &raquo;</a>
                                 {% endif %}
                             </span>
                         </div>
@@ -66,11 +109,11 @@
             <span>List of Top of Verified Energy Efficient Tools</span>
             <ol>
                 <li><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">
-                    <span class="ms-1 d-none d-sm-inline">A</span></a>
-                </li>
+                    tool A
+                </a></li>
                 <li><a href="/polls/" class="px-0 text-black align-middle link-dark link-underline-dark link-underline-opacity-25 link-underline-opacity-50-hover">
-                    <span class="ms-1 d-none d-sm-inline">B</span></a>
-                </li>
+                    tool B
+                </a></li>
             </ol>
         </div>
         <div class="col p-3 mb-5 bg-body-tertiary rounded border border-light-subtle">

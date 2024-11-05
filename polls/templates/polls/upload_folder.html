@@ -2,7 +2,6 @@
 
 {% block content %}
 
-
 <div class="container">
 
 <h1>Upload a Folder</h1>
@@ -15,7 +14,7 @@
         <label for="id_name">Name</label>
     </div>
 
-    <!-- accept=".csv, .tsv, .jsonl, .json, .parquet, .arrow, .txt, .png, .jpg, etc., .wav, .mp3, etc., .tar" -->
+    <!-- accept=".csv, .tsv, .jsonl, .json, .parquet, .arrow, .txt, .png, .jpg, .wav, .mp3, .tar, .bin, etc." -->
     <label for="id_folder" class="form-label">Folder and Multiple Files:</label>
     <input type="file" name="file" id="id_folder" class="form-control mb-1" webkitdirectory directory mozdirectory multiple>
     <input type="text" id="directories" name="directories" hidden/>

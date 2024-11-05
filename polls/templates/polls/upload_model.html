@@ -4,54 +4,65 @@
 
 <div class="container">
 
-<form method="post" action="" class="">
+<form method="post" enctype="multipart/form-data">
 {% csrf_token %}
 
-<div class="row gap-1 mb-1">
+    <p class="text-body-secondary">Fields with asterisk "*" are required.</p>
 
-<p class="text-body-secondary">Fields with asterisk "*" are required.</p>
+    <label for="id_folder" class="form-label">* Upload Model (Folder and Multiple Files)</label>
+    <input type="file" name="model_folder" id="id_folder" class="form-control mb-1" webkitdirectory directory mozdirectory multiple>
+    <input type="text" id="directories" name="directories" hidden/>
 
-<label for="id_file" class="form-label">* Upload Model</label>
-<input name="file" class="form-control" type="file" id="id_file" required>
+    <div class="form-floating mb-1">
+        <input type="text" name="name" class="form-control" id="floatingModelname" placeholder="OneNet" maxlength="320" required>
+        <label for="floatingModelname">* Model Name</label>
+    </div>
 
-<div class="form-floating">
-    <input type="text" name="name" class="form-control" id="floatingModelname" placeholder="OneNet" maxlength="320" required>
-    <label for="floatingModelname">* Model Name</label>
+    <div class="form-floating mb-1">
+        <input type="text" name="model_type" class="form-control" id="floatingModeltype" placeholder="TypeOneNet" maxlength="320" required>
+        <label for="floatingModeltype">* Model Type</label>
+    </div>
+
+    <div class="form-floating mb-1">
+        <input type="text" name="description" class="form-control form-control-sm" id="floatingModelDescription" placeholder="Your description here..." maxlength="320">
+        <label for="floatingModelDescription">Model Description</label>
+    </div>
+
+    <fieldset>
+        <legend class="fs-6 fw-medium">Publicity</legend>
+        <div class="form-check">
+            <label class="form-check-label" for="id_is_public_0">
+                <input class="form-check-input" type="radio" name="is_public" value="1" id="id_is_public_0" required checked>
+                private
+            </label>
+        </div>
+        <div class="form-check">
+            <label class="form-check-label" for="id_is_public_1">
+                <input class="form-check-input" type="radio" name="is_public" value="2" id="id_is_public_1" required>
+                public
+            </label>
+        </div>
+    </fieldset>
+    
+<div class="mt-1">
+    <input type="submit" value="upload" class="btn btn-primary">
 </div>
-
-<div class="form-floating">
-    <input type="text" name="type" class="form-control" id="floatingModeltype" placeholder="TypeOneNet" maxlength="320" required>
-    <label for="floatingModeltype">* Model Type</label>
-</div>
-
-<div class="form-floating">
-    <input type="text" name="url" class="form-control" id="floatingModelURL" placeholder="https://www.example.com" maxlength="2048">
-    <label for="floatingModelURL">Model URL</label>
-</div>
-
-<div class="form-floating">
-    <input type="text" name="Description" class="form-control form-control-sm" id="floatingModelDescription" placeholder="Your description here..." maxlength="320">
-    <label for="floatingModelDescription">Model Description</label>
-</div>
-
-<div class="form-check">
-    <input class="form-check-input" type="radio" name="is_public" id="flexRadioDefault1" checked>
-    <label class="form-check-label" for="flexRadioDefault1">
-        Private
-    </label>
-</div>
-<div class="form-check">
-    <input class="form-check-input" type="radio" name="is_public" id="flexRadioDefault2">
-    <label class="form-check-label" for="flexRadioDefault2">
-        Public
-    </label>
-</div>
-
-</div>
-
-<input type="submit" value="upload" class="btn btn-primary">
 
 </form>
+<script>
+    files = document.querySelector("#id_folder").files;
+    document.querySelector("#id_folder").addEventListener("change", function() {
+        files = document.querySelector("#id_folder").files;
+        var directories = {}
+        for (var file of files) {
+            file.webkitRelativePath
+            directories[file.name] = file.webkitRelativePath            
+        }
+        directories = JSON.stringify(directories);
+        
+        document.querySelector("#directories").value = directories
+    });
+</script>
 
 </div>
 

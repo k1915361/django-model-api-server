@@ -1,7 +1,7 @@
 from django import forms
 from django.db.models import F
 from django.http import HttpResponseRedirect
-from .models import Dataset, Question, Choice
+from .models import Dataset, Model, Question, Choice
 from django.urls import reverse
 from django.utils import timezone
 from django.views import generic
@@ -21,6 +21,7 @@ import os
 import ast
 
 ROOT_DATASET_DIR = 'asset/user/dataset/'
+ROOT_MODEL_DIR = 'asset/user/model/'
 
 is_public_map_bool = {
     '1': False, '2': True, 
@@ -48,7 +49,7 @@ class ResultsView(generic.DetailView):
 
 class UploadDatasetForm(forms.Form):
     name = forms.CharField(max_length=320)
-    dataset = forms.FileField(required=False) # True
+    dataset = forms.FileField(required=False)
     zipfile = forms.FileField(required=False)  
     directories = forms.CharField(required=False)
     filepaths = forms.FilePathField(path=f"{ROOT_DATASET_DIR}public", recursive=True, allow_files=True, allow_folders=True, required=False)
@@ -71,10 +72,9 @@ class UploadModelForm(forms.Form):
         ('2', 'public'),
     ]
 
-    model = forms.FileField()
+    model_folder = forms.FileField()
     name = forms.CharField(max_length=320)
     model_type = forms.CharField(max_length=320)
-    url = forms.CharField(max_length=2048, required=False)
     description = forms.CharField(max_length=320, required=False)
     is_public = forms.ChoiceField(
         widget=forms.RadioSelect,
@@ -104,12 +104,19 @@ class UserDatasetListPathsForm(forms.Form):
     
 class PublicDatasetListPaginationView(forms.Form):
     paginate_by = 10
-    model = Dataset    
+    dataset = Dataset    
 
 class PrivateDatasetListPaginationView(forms.Form):
     paginate_by = 10
-    model = Dataset    
+    dataset = Dataset
 
+class PublicModelListPaginationView(forms.Form):
+    paginate_by = 10
+    model = Model
+
+class PrivateModelListPaginationView(forms.Form):
+    paginate_by = 10
+    model = Model
 
 def vote(request, question_id):
     question = get_object_or_404(Question, pk=question_id)
@@ -151,6 +158,11 @@ def register_view(request, context={}):
 def register_retry_view(request, context={'retry_register_message': 'Your username or email is already taken. Please try again.'}):
     return register_view(request, context)
 
+def make_user_directories(user_id: str):
+    for root_directory in [ROOT_DATASET_DIR, ROOT_MODEL_DIR]:
+        for publicity in ['private', 'public']:
+            os.makedirs(os.path.join(root_directory, publicity, user_id), exist_ok=True)
+
 def register(request):
     username = request.POST["username"]
     email = request.POST["email"]
@@ -162,6 +174,9 @@ def register(request):
 
     user = User.objects.create_user(username, email, password)
     user.save()
+
+    make_user_directories(str(user.id))
+
     login(request, user)
     return redirect('/polls/profile/')
 
@@ -183,11 +198,6 @@ def login_user(request):
         return redirect('/polls/profile/')
     
     return redirect('/polls/login-retry-view/')
-
-def upload_model_view(request, context={}):
-    template_name = "polls/upload_model.html"
-    
-    return render(request, template_name, context)
 
 def get_base_html(user_is_authenticated):
     if user_is_authenticated:
@@ -225,15 +235,55 @@ def private_dataset_list_view(request, context={}):
     context['form'] = PrivateDatasetListPaginationView()
     return render(request, template_name, context)
 
+def public_model_list_view(request, context={}):
+    template_name = "polls/public_model_list_view.html"
+    base_html = get_base_html(request.user.is_authenticated)
+    
+    model_list = Model.objects.filter(is_public=True).order_by("-created")
+    paginator = Paginator(model_list, 2)
+    page_number = request.GET.get("page")
+    page_obj = paginator.get_page(page_number)
+    context = { 'base_html': base_html, 'page_obj': page_obj }
+
+    if request.method != "POST":
+        context['form'] = PublicModelListPaginationView()
+        return render(request, template_name, context)
+
+    context['form'] = PublicModelListPaginationView()
+    return render(request, template_name, context)
+
+def private_model_list_view(request, context={}):
+    template_name = "polls/private_model_list_view.html"
+    base_html = get_base_html(request.user.is_authenticated)
+
+    model_list = Model.objects.filter(is_public=False, user=request.user).order_by("-created")
+    paginator = Paginator(model_list, 2)
+    page_number = request.GET.get("page")
+    page_obj = paginator.get_page(page_number)
+    context = { 'base_html': base_html, 'page_obj': page_obj }
+
+    context['form'] = PrivateModelListPaginationView()
+    return render(request, template_name, context)
+
 def index_homepage_view(request):
     template_name = "polls/index.html"
     base_html = get_base_html(request.user.is_authenticated)
     
     dataset_list = Dataset.objects.filter(is_public=True).order_by("-created")
     paginator = Paginator(dataset_list, 2)
-    page_number = request.GET.get("page")
+    page_number = request.GET.get("dataset_page")
     dataset_page_obj = paginator.get_page(page_number)
-    context = { 'base_html': base_html, 'dataset_page_obj': dataset_page_obj }
+
+    model_list = Model.objects.filter(is_public=True).order_by("-created")
+    model_paginator = Paginator(model_list, 2)
+    model_page_number = request.GET.get("model_page")
+    model_page_obj = model_paginator.get_page(model_page_number)
+
+    context = { 
+        'base_html': base_html, 
+        'dataset_page_obj': dataset_page_obj,
+        'model_page_obj': model_page_obj,
+    }
 
     return render(request, template_name, context)
 
@@ -249,17 +299,6 @@ def user_dataset_list_path_view(request, context={}):
     context['form'] = UserDatasetListPathsForm(request.user.id, request.POST, request.FILES)
     return render(request, template_name, context)
     
-def upload_model(request):
-    model = request.POST.get("model")
-    model_file = request.FILES.get("model")
-    modelname = request.POST.get("modelname")
-    modeltype = request.POST.get("modeltype")
-    modelurl = request.POST.get("modelurl")
-    meta_description = request.POST.get("meta_description")
-    description = request.POST.get("description")
-    
-    return redirect("/polls/upload-model-view/")
-
 def handle_uploaded_file(f, filename='afile', dir="asset/user/dataset/", file_extension=''):
     with open(os.path.join(dir, f"{filename}{file_extension}"), "wb+") as destination:
         for chunk in f.chunks():
@@ -278,7 +317,7 @@ def get_home_directory(directories):
 def unzip_and_save(zipfile_dir, name, user, ispublic, timestamp):
     return
 
-def save_zip_file(zipfile, name, user, ispublic):
+def save_zip_file(zipfile, name: str, user: User, ispublic: str):
     save_dir = os.path.join(ROOT_DATASET_DIR, is_public_map_label[ispublic], str(user.id))
     timestamp = now_Ymd_HMS()
     save_filename = f'{timestamp}-{zipfile.name}'
@@ -289,24 +328,44 @@ def save_zip_file(zipfile, name, user, ispublic):
     dataset.save()
     return zipfile_dir, timestamp
 
-def save_folder(files, directories, name, user, ispublic):
+def save_model_folder_info_to_database(name: str, user: User, model_type: str, model_directory: str, ispublic: str, description: str = ""):
+    model = Model(
+        name=name, 
+        user=user, 
+        model_type=model_type, 
+        model_directory=model_directory,
+        description=description,
+        is_public=is_public_map_bool[ispublic],
+    )
+    model.save()
+    return
+
+def save_dataset_folder_info_to_database(name: str, user: User, dataset_directory: str, ispublic: str):
+    dataset = Dataset(
+        name=name, 
+        user=user, 
+        dataset_directory=dataset_directory, 
+        is_public=is_public_map_bool[ispublic],
+    )
+    dataset.save()
+    return
+
+def save_folder(files: list, directories: dict, user: User, ispublic: str, root_dir: str = ROOT_DATASET_DIR, name: str = ""):
     home_directory = get_home_directory(directories.values())
     timestamp = now_Ymd_HMS()
-    dataset_dir = os.path.join(ROOT_DATASET_DIR, is_public_map_label[ispublic], str(user.id), f"{timestamp}-{home_directory}")
+    dataset_dir = os.path.join(root_dir, is_public_map_label[ispublic], str(user.id), f"{timestamp}-{home_directory}")
 
     for file in files:
         relative_file_path = directories.get(file.name)
         relative_file_directory, _ = os.path.split(relative_file_path)
         
-        file_dir = os.path.join(ROOT_DATASET_DIR, is_public_map_label[ispublic], str(user.id), f"{timestamp}-{relative_file_directory}")
+        file_dir = os.path.join(root_dir, is_public_map_label[ispublic], str(user.id), f"{timestamp}-{relative_file_directory}")
         os.makedirs(file_dir, exist_ok=True)
         
         handle_uploaded_file(file, filename=file.name, dir=file_dir)
-
-    dataset = Dataset(name=name, user=user, dataset_directory=dataset_dir, is_public=is_public_map_bool[ispublic])
+    
     print(' - - - - ', ispublic, type(ispublic), is_public_map_bool[ispublic])
-    dataset.save()
-    return
+    return dataset_dir
 
 def upload_folder(request):
     if request.method != "POST":
@@ -320,7 +379,7 @@ def upload_folder(request):
     directories_str = request.POST.get("directories")
     
     if directories_str:
-        directories = ast.literal_eval(directories_str)
+        directories_dict = ast.literal_eval(directories_str)
 
     zipfile_list = request.FILES.getlist('zipfile')
 
@@ -331,23 +390,34 @@ def upload_folder(request):
 
         unzip_and_save(zipfile_dir, name, request.user, ispublic, timestamp)
 
-    files = request.FILES.getlist('file')
+    dataset_folder = request.FILES.getlist('file')
 
-    if form.is_valid() and len(files) != 0 and len(directories) != 0:
-        save_folder(files, directories, name, request.user, ispublic)
+    if form.is_valid() and len(dataset_folder) != 0 and len(directories_dict) != 0:
+        dataset_dir = save_folder(dataset_folder, directories_dict, request.user, ispublic, root_dir=ROOT_DATASET_DIR)
+        save_dataset_folder_info_to_database(name, request.user, dataset_dir, ispublic)
 
     return render(request, "polls/upload_folder.html", {"form": form})
 
 def upload_model(request):
-    if request.method == "POST":
-        print("upload_model() POST")
-        form = UploadModelForm(request.POST, request.FILES)
-
-        if form.is_valid(): 
-            print("upload_model() POST form-is-valid") 
-            handle_uploaded_file(request.FILES["file"], dir="asset/user/model/") 
-    else:
+    if request.method != "POST":
         form = UploadModelForm()
+        return render(request, "polls/upload_model.html", {"form": form})
+
+    form = UploadModelForm(request.POST, request.FILES)
+    name = request.POST.get("name")
+    model_type = request.POST.get("model_type")
+    ispublic = request.POST.get("is_public")
+    directories_str = request.POST.get("directories")
+    description = request.POST.get("description")
+    model_folder = request.FILES.getlist('model_folder')
+
+    if directories_str:
+        directories_dict = ast.literal_eval(directories_str)
+
+    if form.is_valid() and len(model_folder) != 0 and len(directories_dict) != 0: 
+        model_directory = save_folder(model_folder, directories_dict, request.user, ispublic, root_dir=ROOT_MODEL_DIR)
+        save_model_folder_info_to_database(name, request.user, model_type, model_directory, ispublic, description=description)
+        
     return render(request, "polls/upload_model.html", {"form": form})
 
 def change_password(request):
