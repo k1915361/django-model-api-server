@@ -90,6 +90,7 @@ python manage.py sqlmigrate polls 0005
 python manage.py sqlmigrate polls 0006
 python manage.py sqlmigrate polls 0007
 python manage.py sqlmigrate polls 0008
+python manage.py sqlmigrate polls 0009
 
 # BEGIN;
 # --
@@ -114,8 +115,8 @@ python manage.py createsuperuser
 # Username: admin
 # Email address: admin@example.com
 
-# Password: ku202425
-# Password (again): ku202425
+# Password: apassword
+# Password (again): apassword
 # Superuser created successfully.
 
 python manage.py runserver
@@ -126,20 +127,37 @@ python manage.py runserver
 ```sh
 python manage.py shell
 
-from polls.models import Login
+from polls.models import User
 
-Login.objects.all()
+User.objects.all()
 
-l = Login(email="ace@email.com", password="ace133", username="ace")
+u = User(email="ace@email.com", password="apassword", username="ace")
+u.save()
+u.id
+u.email
+u.password
+u.username
 
-l.save()
+User.objects.all()
 
-l.id
-l.email
-l.password
-l.username
+# ctrl + z  to exit python shell
+```
 
-Login.objects.all()
+## Updating user database record
+
+```sh
+python manage.py shell
+
+from polls.models import User
+
+User.objects.all()
+
+u = User.objects.filter(username="ace")[0]
+u.password
+u.set_password("new password")
+u.password
+
+u.save()
 
 # ctrl + z  to exit python shell
 ```
@@ -551,57 +569,31 @@ Choose `Python Debugger: DJango`
 
 Add breakpoints to where you want to view variable content, instead of using print() function.  
 
-## Developer Commands 
+## What is the advantage of ASGI vs WSGI?
+
+ASGI's async does not speed up the throughput of CPU-bound processes. 
+
+ASGI asynchronises and reduces waiting time for I/O: 
+- to local or remote Database, 
+- third party API calls, 
+- exporting storage to another storage, 
+- database to S3 static file blobs, 
+- multiple network requests, 
+- parallel API calls, 
+- parallel upload/download, 
+- streaming/broadcasting videos, etc.
+- async view (HTML rendering) and async I/O
+
+<https://forum.djangoproject.com/t/what-does-switching-to-asgi-entail/26857/3>
+
+## Installing Django 
 
 ```sh
 sudo apt update
-python3 -V
 sudo apt install python3-django
-django-admin --version
-# 4.2.11
 
-python3.11 -m pip list | grep ja
-# Django 4.2.11
-
-sudo apt update
-python3 -V
-sudo apt install python3-pip python3-venv
-sudo apt install python3-dev
-
-# check pip version
-python3.11 -m pip --version
-
-mkdir ~/newproject
-cd ~/newproject
-
-# make env
-python3 -m venv my_env
-# Python 3.12
-# Throughout the whole document, it was tried best to use python 3.11 for stability but using it is causing troubles, stick with 3.12 if preferred. 
-# in practise use `python` or `python3.12 -m` instaed of `python3.11 -m`
-
-# check current env
-python
-import sys
-print(sys.prefix)
-# /home/user/my_env
-# ctrl + z to exit
-# /usr
-
-python3.11 -V
-# Python 3.11.10
-
-cd /home/user/Documents/ku_django/
-source /home/user/my_env/bin/activate
-
-# python3.11 -m pip install django
-pip install django
-
-# A Guide from Writing your first Django app
-# https://docs.djangoproject.com/en/5.1/intro/tutorial01/
-
-# python3.11 -m django --version
-# 4.2.11
+python -m pip list | grep ja
+# Django 5.1.2
 
 python -m django --version
 # 5.1.2
@@ -609,55 +601,106 @@ python -m django --version
 django-admin --version
 # 5.1.2
 
-deactivate
+sudo apt update
+python3 -V
+# 3.12.3
+
+sudo apt install python3-pip python3-venv
+sudo apt install python3-dev
+
+# check pip version
+python3 -m pip --version
+# pip 24.0 from /home/user/my_env/lib/python3.12/site-packages/pip (python 3.12)
+
+# check current env
+python
+import sys
+print(sys.prefix)
+# /home/user/my_env
+
+# ctrl + z to exit
+# /usr
+
+pip install django
+
+# A Guide from Writing your first Django app. https://docs.djangoproject.com/en/5.1/intro/tutorial01/
 
 # create a project
-# note make sure to always replace python, python3 and python3.12 to python3.11.
 django-admin startproject ku_django
 cd ku_django/
 
-# python3.11 manage.py runserver
+# initial migration for sessions and contenttypes
+python manage.py migrate
+
 python manage.py runserver
+```
 
-# create an app
-# make sure to replace "polls" to webapp
-# python3.11 manage.py startapp webapp
-python manage.py startapp webapp
+Throughout the whole document, the project aimed to use python 3.11 for stability, however development troubles were encountered. 
+Use 3.12 or 3.11 based on your preferrence.  
+In practise use `python` or `python3.12 -m` instaed of `python3.11 -m`.  
 
-# start django
+## Making a Python environment
+
+```sh
+python -V
+# 3.12.3
+python3 -V
+# 3.12.3
+
+python -m pip --version
+# pip 24.0 from /home/user/my_env/lib/python3.12/site-packages/pip (python 3.12)
+python3 -m pip --version
+# same output
+
+cd /home/user/
+
+# make env
+python3 -m venv my_env
+# Python 3.12
+
+mkdir /home/user/Documents/ku_django/
 cd /home/user/Documents/ku_django/
+
+# activate 
 source /home/user/my_env/bin/activate
+
+# optional deactivate
 deactivate
+```
 
-django-admin startproject djangoproject .
+## Making a beginner sample application
 
+```sh
+cd /home/user/Documents/ku_djangoo/
+python manage.py startapp polls
+```
+
+
+## Optional - Making a beginner sample model data
+
+Example of how to make an object and save to database.
+
+```sh
 # Writing your first Django app, part 2
 # https://docs.djangoproject.com/en/5.1/intro/tutorial02/
 
 # API - Interactive python shell
-python3.11 manage.py shell
+python3 manage.py shell
 
 from polls.models import Choice, Question  # Import the model classes we just wrote.
 
-# No questions are in the system yet.
 Question.objects.all()
-# <QuerySet []>
+# <QuerySet []>  # No questions are in the system yet.
 
 # Create a new Question.
-# Support for time zones is enabled in the default settings file, so
-# Django expects a datetime with tzinfo for pub_date. Use timezone.now()
-# instead of datetime.datetime.now() and it will do the right thing.
 from django.utils import timezone
 q = Question(question_text="What's new?", pub_date=timezone.now())
 
 # Save the object into the database. You have to call save() explicitly.
 q.save()
 
-# Now it has an ID.
 q.id
 # 1
-
-# Access model field values via Python attributes.
 q.question_text
 # "What's new?"
 q.pub_date
@@ -667,14 +710,15 @@ q.pub_date
 q.question_text = "What's up?"
 q.save()
 
-# objects.all() displays all the questions in the database.
 Question.objects.all()
-# <QuerySet [<Question: Question object (1)>]>
+# <QuerySet [<Question: Question object (1)>]> 
 
 # ctrl + z  to exit
+```
 
-# delete a environment
-# myenv is in the same directory as terminal current directory 
+## Deleting an environment
+
+```sh
+# myenv is in the current directory of the terminal 
 rm -r myenv
-
 ```
