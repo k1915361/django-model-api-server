@@ -33,6 +33,7 @@ is_public_map_label = {
     '1': 'private', '2': 'public', 
     'private' :'1', 'public': '2', 
 }
+
 class DetailView(generic.DetailView):
     model = Question
     template_name = "polls/detail.html"
@@ -188,7 +189,6 @@ def login_retry_view(request, context={'retry_login_message': 'Login was incorre
     return login_view(request, context)
 
 def login_user(request):
-    print("running login_user(request) ")
     username = request.POST["username"]
     password = request.POST["password"]
     user = authenticate(request, username=username, password=password)

@@ -3,6 +3,7 @@ from django.contrib import admin
 from django.contrib.auth import views as auth_views
 
 from . import views
+from . import api
 
 app_name = 'polls'
 urlpatterns = [
@@ -13,6 +14,7 @@ urlpatterns = [
     path("<int:question_id>/vote/", views.vote, name="vote"),
     path("logout/", views.logout_view, name="logout"),
     path("login-view/", views.login_view, name="login view"),
+    path("login-api/", api.login_api, name="login api"),
     path("login-retry-view/", views.login_retry_view, name="login retry view"),
     path("login-view/login/", views.login_user, name="login"),
     path("login-retry-view/login/", views.login_user, name="retry login"),
