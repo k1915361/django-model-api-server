@@ -586,6 +586,78 @@ cd /home/user/Documents/ku_djangoo/
 python manage.py startapp polls
 ```
 
+## Saving dataset into file system and database
+
+Old file system folder structure:
+```
+ku_django
+- asset
+ - user
+  - dataset
+   - private
+   - public
+    - <user_id>
+     - <timestamp>-<original_folder_name>
+    - 1
+    - 2
+  - model
+   - private
+   - public
+```
+
+What if user wants to switch public/private state?  
+It is inefficient moving the dataset compared to simply switching "is_public" boolean field in the database (or "public"/"private" string in the file name).
+
+New file system folder structure:
+```
+- asset
+ - user
+  - dataset
+   - <user_id>-<timestamp>-<original_folder_name>
+   - 1-20001010_101010-A_dataset
+  - model
+   - <user_id>-<timestamp>-<original_folder_name>
+   - 2-20001010_101010-A_model
+```
+
+It is not necessary to include the user-ID in the folder name.  
+
+However, in this project, it was considered that folders with same name maybe uploaded at the same time (though chance is nearly none, it is not impossible),  
+
+This will cause problem where a user will be directed to the wrong folder with the right directory path saved in the database. 
+
+If that dataset is private it would be a privacy issue and potentially a information property breach and misuse, exploitation of this bug or design defect.  
+
+## Allowing guest without account to upload models and datasets 
+
+Currently it is allowed, in the future this decision may change in this project.
+
+`polls/models.py`
+```python
+    class Model(models.Model):
+        user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True) 
+```
+
+## Setting up ASGI
+
+Core Libraries:
+
+- ASGI Server Options:
+  - Uvicorn: A high-performance ASGI server based on uvloop and httptools.
+  - Hypercorn: A flexible ASGI server that supports HTTP/1, HTTP/2, and WebSockets.   
+  - Daphne: A production-ready ASGI server, often used with Django Channels.  
+
+For Features and Scalability:
+
+- Django Channels: This library extends Django to support real-time communication features like WebSockets. It is useful for updating user with progress of AI and dataset processes in the server. Channels is typically used for features like chat applications and real-time notifications.   
+- Asyncio: Python's standard library for asynchronous programming, essential for writing efficient and scalable ASGI applications.
+
+Considerations:
+
+- Database Drivers: Ensure that the database driver supports asynchronous operations. Check `asyncpg`, an asynchronous PostgreSQL driver.
+- Third-Party Libraries: Check the documentation to see if libraries have asynchronous support.
+- Deployment: Choose a deployment platform that supports ASGI, such as Heroku, AWS, or Google Cloud Platform. Configure your deployment environment to use an ASGI server like Uvicorn or Hypercorn.
+
 ## Optional - Making a beginner sample model data
 
 Example of how to make an object and save to database.
