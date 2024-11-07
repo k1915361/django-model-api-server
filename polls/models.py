@@ -27,7 +27,8 @@ class Choice(models.Model):
 class Model(models.Model):
     name = models.CharField(max_length=320)
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True) 
-
+    original_model = models.ForeignKey("self", on_delete=models.SET_NULL, blank=True, null=True) 
+    
     model_type = models.CharField(max_length=320)
     model_directory = models.CharField(max_length=2048)
     is_public = models.BooleanField(default=False) 

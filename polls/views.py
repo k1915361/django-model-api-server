@@ -304,7 +304,7 @@ def handle_uploaded_file(f, filename='afile', dir="asset/user/dataset/", file_ex
         for chunk in f.chunks():
             destination.write(chunk)
 
-def now_Ymd_HMS(format='%Y%m%d_%H%M%S'):
+def now_Ymd_HMS(format='%Y%m%d_%H%M%S') -> str:
     return timezone.now().strftime(format)
 
 def get_home_directory(directories):
@@ -317,16 +317,18 @@ def get_home_directory(directories):
 def unzip_and_save(zipfile_dir, name, user, ispublic, timestamp):
     return
 
-def save_zip_file(zipfile, name: str, user: User, ispublic: str):
-    save_dir = os.path.join(ROOT_DATASET_DIR, is_public_map_label[ispublic], str(user.id))
-    timestamp = now_Ymd_HMS()
-    save_filename = f'{timestamp}-{zipfile.name}'
-    zipfile_dir = os.path.join(save_dir, save_filename)
-
-    FileSystemStorage(location=save_dir).save(save_filename, zipfile) 
-    dataset = Dataset(name=name, user=user, dataset_directory=zipfile_dir, is_public=is_public_map_bool[ispublic])
+def save_dataset_to_database(name: str, user: User, dataset_directory: str, ispublic):
+    dataset = Dataset(name=name, user=user, dataset_directory=dataset_directory, is_public=is_public_map_bool[ispublic])
     dataset.save()
-    return zipfile_dir, timestamp
+    return
+
+def save_zip_file(zipfile, name: str, user: User, ispublic: str, timestamp: str, root_dir: str = ROOT_DATASET_DIR):
+    save_filename = f"{user.id}-{timestamp}-{zipfile.name}"
+    zipfile_dir = os.path.join(root_dir, save_filename)
+
+    FileSystemStorage(location=root_dir).save(save_filename, zipfile) 
+    save_dataset_to_database(name, user, zipfile_dir, ispublic)
+    return zipfile_dir
 
 def save_model_folder_info_to_database(name: str, user: User, model_type: str, model_directory: str, ispublic: str, description: str = ""):
     model = Model(
@@ -350,27 +352,26 @@ def save_dataset_folder_info_to_database(name: str, user: User, dataset_director
     dataset.save()
     return
 
-def save_folder(files: list, directories: dict, user: User, ispublic: str, root_dir: str = ROOT_DATASET_DIR, name: str = ""):
+def save_folder(files: list, directories: dict, user: User, timestamp: str, root_dir: str = ROOT_DATASET_DIR, name: str = ""):
     home_directory = get_home_directory(directories.values())
-    timestamp = now_Ymd_HMS()
-    dataset_dir = os.path.join(root_dir, is_public_map_label[ispublic], str(user.id), f"{timestamp}-{home_directory}")
-
+    dataset_dir_unique = os.path.join(root_dir, f"{user.id}-{timestamp}")
+    dataset_dir = f"{dataset_dir_unique}-{home_directory}"
+    
     for file in files:
         relative_file_path = directories.get(file.name)
         relative_file_directory, _ = os.path.split(relative_file_path)
         
-        file_dir = os.path.join(root_dir, is_public_map_label[ispublic], str(user.id), f"{timestamp}-{relative_file_directory}")
+        file_dir = f"{dataset_dir_unique}-{relative_file_directory}"
         os.makedirs(file_dir, exist_ok=True)
         
         handle_uploaded_file(file, filename=file.name, dir=file_dir)
     
-    print(' - - - - ', ispublic, type(ispublic), is_public_map_bool[ispublic])
     return dataset_dir
 
-def upload_folder(request):
+def upload_folder(request, template_name = "polls/upload_folder.html", context = {}):
     if request.method != "POST":
         form = UploadDatasetForm()
-        return render(request, "polls/upload_folder.html", {"form": form})
+        return render(request, template_name, {"form": form} | context)
     
     form = UploadDatasetForm(request.POST, request.FILES)
     ispublic = request.POST.get("is_public")
@@ -386,17 +387,20 @@ def upload_folder(request):
     if len(zipfile_list) != 0:
         zipfile = zipfile_list[0] 
 
-        zipfile_dir, timestamp = save_zip_file(zipfile, name, request.user, ispublic)
-
+        timestamp = now_Ymd_HMS()
+        zipfile_dir = save_zip_file(zipfile, name, request.user, ispublic, timestamp)
+        
         unzip_and_save(zipfile_dir, name, request.user, ispublic, timestamp)
 
     dataset_folder = request.FILES.getlist('file')
 
     if form.is_valid() and len(dataset_folder) != 0 and len(directories_dict) != 0:
-        dataset_dir = save_folder(dataset_folder, directories_dict, request.user, ispublic, root_dir=ROOT_DATASET_DIR)
+        timestamp = now_Ymd_HMS()
+        dataset_dir = save_folder(dataset_folder, directories_dict, request.user, timestamp, root_dir=ROOT_DATASET_DIR)
         save_dataset_folder_info_to_database(name, request.user, dataset_dir, ispublic)
 
-    return render(request, "polls/upload_folder.html", {"form": form})
+    print({"form": form} | context)
+    return render(request, template_name, {"form": form} | context)
 
 def upload_model(request):
     if request.method != "POST":
@@ -415,10 +419,17 @@ def upload_model(request):
         directories_dict = ast.literal_eval(directories_str)
 
     if form.is_valid() and len(model_folder) != 0 and len(directories_dict) != 0: 
-        model_directory = save_folder(model_folder, directories_dict, request.user, ispublic, root_dir=ROOT_MODEL_DIR)
+        timestamp = now_Ymd_HMS()
+        model_directory = save_folder(model_folder, directories_dict, request.user, timestamp, root_dir=ROOT_MODEL_DIR)
         save_model_folder_info_to_database(name, request.user, model_type, model_directory, ispublic, description=description)
         
     return render(request, "polls/upload_model.html", {"form": form})
+
+def personal_dataset_repo_view(request):
+    template_name = "polls/personal_dataset_repo.html"
+    dataset = Dataset.objects.filter(is_public=False, user=request.user).order_by("-created")
+    context = {'private_dataset_list': dataset}
+    return upload_folder(request, template_name, context)
 
 def change_password(request):
     if request.method == "POST":
@@ -462,10 +473,6 @@ def previous_tasks_view(request):
 
 def personal_model_repo_view(request):
     template_name = "polls/personal_model_repo.html"
-    return render(request, template_name)
-
-def personal_dataset_repo_view(request):
-    template_name = "polls/personal_dataset_repo.html"
     return render(request, template_name)
 
 def personal_dataset_analysis_view(request):
