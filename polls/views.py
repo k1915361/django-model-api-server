@@ -15,10 +15,10 @@ from django.conf import settings
 from django.template import Context, Template
 from django.core.files.uploadhandler import MemoryFileUploadHandler, TemporaryFileUploadHandler
 from django.core.files.storage import FileSystemStorage
-import sys
 import os
 import ast
 import datetime
+import shutil  
 
 ROOT_DATASET_DIR = 'asset/user/dataset/'
 ROOT_MODEL_DIR = 'asset/user/model/'
@@ -333,14 +333,15 @@ def save_zip_file(zipfile, name: str, user: User, ispublic: str, timestamp: str,
     save_dataset_to_database(name, user, zipfile_dir, ispublic)
     return zipfile_dir
 
-def save_model_folder_info_to_database(name: str, user: User, model_type: str, model_directory: str, ispublic: str, description: str = ""):
+def save_model_folder_info_to_database(name: str, user: User, model_type: str, model_directory: str, ispublic: str, original_model: Model = None, description: str = ""):
     model = Model(
         name=name, 
         user=user, 
         model_type=model_type, 
         model_directory=model_directory,
-        description=description,
+        original_model=original_model,
         is_public=is_public_map_bool[ispublic],
+        description=description,
     )
     model.save()
     return
@@ -446,23 +447,49 @@ def model_list_view_to_fork(request):
     
     chosen_model_id = request.POST.get('model_id')
 
+    name = request.POST.get("name")
+    model_type = request.POST.get("model_type")
+    ispublic = request.POST.get("is_public")
+    description = request.POST.get("description")
+
     print(' --- chosen_model_id', chosen_model_id)
 
-    fork_model(chosen_model_id, request.user.id)
+
+    fork_model(chosen_model_id, request.user, name, model_type, ispublic, description=description)
 
     return render(request, template_name, {"form": form} | context)
     
-def fork_model(model_id, userid):
+def fork_model(model_id, user, name, model_type, ispublic, description="", model_directory=""):
     chosen_model = Model.objects.filter(id=model_id)
     
-    print(' --- chosen_model', chosen_model)
-    print(' --- chosen_model', chosen_model.first())
-    print(' --- chosen_model', chosen_model.first())
-    print(' --- userid', userid)
+    # python copy folder to another directory
 
-    # chosen_model_folder_data = read chosen_model.model_directory
+    timestamp = now_Ymd_HMS()
 
-    # save_folder(chosen_model_folder_data)
+    chosen_model_folder_data = "TODO read folder from chosen_model.model_directory"
+
+    root_dir = ROOT_MODEL_DIR
+    home_directory = get_home_directory(chosen_model_folder_data.directories.values())
+    model_dir_unique = os.path.join(root_dir, f"{user.id}-{timestamp}")
+    model_dir = f"{model_dir_unique}-{home_directory}"
+
+    model_directory = model_dir
+
+    result = copy_directory(chosen_model.model_directory, model_directory)
+
+    if result == "OSError - fail to copy":
+        return
+
+    save_model_folder_info_to_database(name, user, model_type, model_directory, ispublic, original_model=chosen_model, description=description)
+
+    return
+
+def copy_directory(src: str, dest: str):
+    try:
+        shutil.copytree(src, dest)
+    except OSError as err:
+        print("Error - copy_folder(): % s" % err)
+        return "OSError - fail to copy"
     return
 
 def upload_model(request):
