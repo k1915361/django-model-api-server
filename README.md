@@ -638,6 +638,96 @@ Currently it is allowed, in the future this decision may change in this project.
         user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True) 
 ```
 
+## Formatting human readable datetimes
+
+Format:  
+
+30 seconds ago  
+30 minutes ago  
+3 hours ago  
+2 days ago  
+dd Mmm  
+01 Jan  
+dd Mmm yyyy  
+01 Jan 2000  
+
+option 1.  
+`polls/test/test.py` and  
+`polls/views.py`  
+```py
+def timestamp_humanize(timestamp: datetime) -> str:
+    now = dt.now()
+    time_diff = now - timestamp
+
+    if time_diff.days == 0:
+        if time_diff.seconds < 60:
+            return f"{time_diff.seconds} seconds"
+        if time_diff.seconds < 3600:
+            return f"{time_diff.seconds // 60} minutes"
+        else:
+            return f"{time_diff.seconds // 3600} hours"
+    elif time_diff.days < 7:
+        return f"{time_diff.days} days"
+    elif time_diff.days < 30:
+        return f"{timestamp.strftime('%d %b')}"
+    else:
+        return f"{timestamp.strftime('%d %b %Y')}"
+
+def example_view(request):
+    dataset = Dataset.objects.filter(is_public=False, user=request.user).annotate(
+        updated_str = F('updated')
+    ).order_by("-created")
+    
+    for dtst in dataset:
+        dtst.updated_str = timestamp_humanize(dtst.updated_str)
+```
+
+`polls/templates/polls/personal_dataset_repo.html`  
+```html
+• {{ dataset.updated_str }} ago
+```
+
+Use command `python polls/test/test.py ` to do assert tests.
+
+option 2.  
+
+`polls/templatetags/custom_filters.py`  
+```py
+from django import template
+from django.template.defaultfilters import stringfilter
+
+register = template.Library()
+
+@register.filter
+@stringfilter
+def upto(value, delimiter=','):
+    return value.split(delimiter)[0]
+upto.is_safe = True
+```
+
+`polls/templates/polls/personal_dataset_repo.html`  
+```html
+{% load custom_filters %}
+• {{ dataset.updated|timesince|upto:',' }} ago
+```
+
+`','` parameter is optional and can be eliminated.
+
+option 3.
+
+`ku_django/ku_djangoo/settings.py`  
+```py
+INSTALLED_APPS = [
+    'django.contrib.humanize',
+]
+```
+
+`polls/templates/polls/personal_dataset_repo.html`  
+```html
+{% load humanize %}
+• {{ dataset.updated|naturaltime }}
+```
+
 ## Setting up ASGI
 
 Core Libraries:
