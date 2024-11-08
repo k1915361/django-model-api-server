@@ -7,3 +7,12 @@ li a {
 .box_ { 
     font-style: italic;
 }
+
+.text-smd {
+  font-size: .94rem;
+}
+
+.text-sm {
+  font-size: .875rem;
+  line-height: 1.25rem;
+}
