@@ -1,0 +1,76 @@
+{% extends "base_logged_in.html" %}
+
+{% load custom_filters %}
+{% block content %}
+
+<div class="container">
+
+<h1>Model - choose one to fork</h1>
+
+<form method="post" enctype="multipart/form-data" >
+    {% csrf_token %}
+    
+    <div class="form-floating mb-1">
+        <input type="text" name="name" id="id_name" class="form-control" placeholder="">
+        <label for="id_name">Name</label>
+    </div>
+
+    {% if public_model_list %}
+        {% for model in public_model_list %}
+            <form method="post">
+                {% csrf_token %}
+                <a class="btn btn-light border-light-subtle shadow-sm text-smd text-start" temphref="url 'polls:private-model-data-view/?page=' data.id" href="#" role="button">
+                    <span class="text-sm">{{ model.name }}</span> 
+                    <div>
+                        <span class="text-body-secondary text-sm">{{ model.user }}</span> 
+                        <span class="text-body-secondary text-sm">• {{ model.updated|timesince|upto }} ago</span>                    
+                    </div>
+                </a>
+                <button type="submit" class="btn btn-primary">Fork</button>
+                <input type="" name="model_id" id="id_model_id" value="{{ model.id }}">
+            </form>
+        {% endfor %}
+    {% else %}
+        <p>No models are available.</p>
+    {% endif %}
+    
+    
+
+    <fieldset>
+        <legend class="fs-6 fw-medium">Publicity</legend>
+        <div class="form-check">
+            <label class="form-check-label" for="id_is_public_0">
+                <input class="form-check-input" type="radio" name="is_public" value="1" id="id_is_public_0" required checked>
+                private
+            </label>
+        </div>
+        <div class="form-check">
+            <label class="form-check-label" for="id_is_public_1">
+                <input class="form-check-input" type="radio" name="is_public" value="2" id="id_is_public_1" required>
+                public
+            </label>
+        </div>
+    </fieldset>
+    <br>
+    
+</form>
+<script>
+    files = document.querySelector("#id_folder").files;
+    document.querySelector("#id_folder").addEventListener("change", function() {
+        files = document.querySelector("#id_folder").files;
+        var directories = {}
+        for (var file of files) {
+            file.webkitRelativePath
+            directories[file.name] = file.webkitRelativePath            
+        }
+        directories = JSON.stringify(directories);
+        
+        document.querySelector("#directories").value = directories
+    });
+</script>
+
+</div>
+
+
+{% endblock %}
+

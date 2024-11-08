@@ -6,7 +6,6 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views import generic
 from django.core.paginator import Paginator
-
 from django.shortcuts import get_object_or_404, render, redirect
 from django.contrib.auth.models import User
 
@@ -19,6 +18,7 @@ from django.core.files.storage import FileSystemStorage
 import sys
 import os
 import ast
+import datetime
 
 ROOT_DATASET_DIR = 'asset/user/dataset/'
 ROOT_MODEL_DIR = 'asset/user/model/'
@@ -53,7 +53,7 @@ class UploadDatasetForm(forms.Form):
     dataset = forms.FileField(required=False)
     zipfile = forms.FileField(required=False)  
     directories = forms.CharField(required=False)
-    filepaths = forms.FilePathField(path=f"{ROOT_DATASET_DIR}public", recursive=True, allow_files=True, allow_folders=True, required=False)
+    filepaths = forms.FilePathField(path=f"{ROOT_DATASET_DIR}/", recursive=True, allow_files=True, allow_folders=True, required=False)
 
     CHOICES = [
         ('1', 'private'),
@@ -67,6 +67,9 @@ class UploadDatasetForm(forms.Form):
         required=False,
     )
 
+class ChooseModelForkForm(forms.Form):
+    model_id = forms.IntegerField(widget=forms.HiddenInput())
+    
 class UploadModelForm(forms.Form):
     CHOICES = [
         ('1', 'private'),
@@ -88,7 +91,7 @@ class UserDatasetListPathsForm(forms.Form):
         self.userid = userid
 
         self.fields['filepaths_public'] = forms.FilePathField(
-            path=f"{ROOT_DATASET_DIR}public/{self.userid}",
+            path=f"{ROOT_DATASET_DIR}/",
             recursive=True,
             allow_files=True,
             allow_folders=True,
@@ -96,7 +99,7 @@ class UserDatasetListPathsForm(forms.Form):
         )
 
         self.fields['filepaths_private'] = forms.FilePathField(
-            path=f"{ROOT_DATASET_DIR}private/{self.userid}",
+            path=f"{ROOT_DATASET_DIR}/",
             recursive=True,
             allow_files=True,
             allow_folders=True,
@@ -399,8 +402,68 @@ def upload_folder(request, template_name = "polls/upload_folder.html", context =
         dataset_dir = save_folder(dataset_folder, directories_dict, request.user, timestamp, root_dir=ROOT_DATASET_DIR)
         save_dataset_folder_info_to_database(name, request.user, dataset_dir, ispublic)
 
-    print({"form": form} | context)
     return render(request, template_name, {"form": form} | context)
+
+def timestamp_humanize(timestamp: datetime) -> str:
+    """
+    Formats a timestamp string into a human-readable format.
+
+    Args:
+        timestamp (str): The timestamp string in a suitable format (e.g., ISO 8601).
+
+    Returns:
+        str: The formatted timestamp string.
+    """
+    
+    timestamp = timestamp.replace(tzinfo=None)
+
+    now = datetime.datetime.now()
+    time_diff = now - timestamp
+
+    if time_diff.days == 0:
+        if time_diff.seconds < 60:
+            return f"{time_diff.seconds} seconds"
+        if time_diff.seconds < 3600:
+            return f"{time_diff.seconds // 60} minutes"
+        else:
+            return f"{time_diff.seconds // 3600} hours"
+    elif time_diff.days < 7:
+        return f"{time_diff.days} days"
+    elif time_diff.days < 30:
+        return f"{timestamp.strftime('%d %b')}"
+    else:
+        return f"{timestamp.strftime('%d %b %Y')}"
+
+def model_list_view_to_fork(request):
+    template_name = "polls/model_list_choose_one_to_fork.html"
+    public_model_list = Model.objects.filter(is_public=True).order_by("-created")
+    form = ChooseModelForkForm(request.POST)
+    context = {'public_model_list': public_model_list}
+
+    if request.method != "POST":
+        form = ChooseModelForkForm()
+        return render(request, template_name, {"form": form} | context)
+    
+    chosen_model_id = request.POST.get('model_id')
+
+    print(' --- chosen_model_id', chosen_model_id)
+
+    fork_model(chosen_model_id, request.user.id)
+
+    return render(request, template_name, {"form": form} | context)
+    
+def fork_model(model_id, userid):
+    chosen_model = Model.objects.filter(id=model_id)
+    
+    print(' --- chosen_model', chosen_model)
+    print(' --- chosen_model', chosen_model.first())
+    print(' --- chosen_model', chosen_model.first())
+    print(' --- userid', userid)
+
+    # chosen_model_folder_data = read chosen_model.model_directory
+
+    # save_folder(chosen_model_folder_data)
+    return
 
 def upload_model(request):
     if request.method != "POST":
@@ -427,7 +490,13 @@ def upload_model(request):
 
 def personal_dataset_repo_view(request):
     template_name = "polls/personal_dataset_repo.html"
-    dataset = Dataset.objects.filter(is_public=False, user=request.user).order_by("-created")
+    dataset = Dataset.objects.filter(is_public=False, user=request.user).annotate(
+        updated_str = F('updated')
+    ).order_by("-created")
+    
+    for datast in dataset:
+        datast.updated_str = timestamp_humanize(datast.updated_str)
+
     context = {'private_dataset_list': dataset}
     return upload_folder(request, template_name, context)
 

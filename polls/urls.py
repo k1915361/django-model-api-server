@@ -26,6 +26,7 @@ urlpatterns = [
     path("upload-folder/", views.upload_folder, name="upload folder view"),
     path("public-dataset-list-view/", views.public_dataset_list_view, name="public dataset list view"),
     path("public-model-list-view/", views.public_model_list_view, name="public model list view"),
+    path("dataset-list-view-to-fork/", views.model_list_view_to_fork, name="dataset list view to fork"),
     path("public-dataset-data-view:<int:pk>/", views.public_dataset_list_view, name="public-dataset-data-view"),
     path("private-dataset-list-view/", views.private_dataset_list_view, name="private-dataset-list-view"),
     path("private-model-list-view/", views.private_model_list_view, name="private-model-list-view"),

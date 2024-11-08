@@ -1,5 +1,6 @@
 {% extends "base_logged_in.html" %}
 
+{% load custom_filters %}
 {% block content %}
 
 <div class="col p-1 pt-2 m-n2 mb-1 bg-secondary bg-gradient border-bottom border-light-subtle" style="--bs-bg-opacity: .05;">
@@ -11,24 +12,22 @@
             <div class="col p-1 outline-tertiary rounded border border-light-subtle">
                 <div class="row gap-1 m-0">
                     {% if private_dataset_list %}
-                    <div>
-                        {% for data in private_dataset_list %}
-                            <div>
-                                <a class="fw-semibold" temphref="url 'polls:private-dataset-data-view/?page=' data.id" href="#">{{ data.name }}</a>
-                                <span>
-                                    <span class="fw-medium"> {{ data.user }}</span> 
-                                    <span class="fw-lighter">{{ data.updated }}</span>                
-                                </span>
-                            </div>
+                        {% for dataset in private_dataset_list %}
+                            <a class="btn btn-light border-light-subtle shadow-sm text-smd text-start" temphref="url 'polls:private-dataset-data-view/?page=' data.id" href="#" role="button">
+                                <span class="text-sm">{{ dataset.name }}</span> 
+                                <div>
+                                    <span class="text-body-secondary text-sm">{{ dataset.user }}</span> 
+                                    <span class="text-body-secondary text-sm">• {{ dataset.updated|timesince|upto }} ago</span>
+                                </div>
+                            </a>
                         {% endfor %}
-                    </div>
                     {% else %}
                         <p>No Dataset are available.</p>
                     {% endif %}
 
-                    <a class="btn btn-light border-light-subtle shadow-sm" href="/polls/personal-dataset-analysis/" role="button">Dataset 01</a>
-                    <a class="btn btn-light border-light-subtle shadow-sm" href="/polls/personal-dataset-analysis/" role="button">Dataset 02</a>
-                    <a class="btn btn-light border-light-subtle shadow-sm" href="/polls/personal-dataset-analysis/" role="button">Dataset 03</a>
+                    <a class="btn btn-light border-light-subtle shadow-sm" href="/polls/personal-dataset-analysis/" role="button">Dataset A</a>
+                    <a class="btn btn-light border-light-subtle shadow-sm" href="/polls/personal-dataset-analysis/" role="button">Dataset B</a>
+                    <a class="btn btn-light border-light-subtle shadow-sm" href="/polls/personal-dataset-analysis/" role="button">Dataset C</a>
                 </div>
             </div>
             <div class="col p-1 outline-tertiary rounded border border-light-subtle">
@@ -67,11 +66,11 @@
                         (Folder and Multiple Files)
                     </span>
                 </label>
-                <input type="file" name="file" id="id_folder" class="form-control mb-1" webkitdirectory directory mozdirectory multiple>
+                <input type="file" name="file" id="id_folder" class="form-control mb-1" webkitdirectory directory mozdirectory multiple required>
                 <input type="text" id="directories" name="directories" hidden/>
 
                 <div class="form-floating mb-1">
-                    <input type="text" name="name" id="id_name" class="form-control" placeholder="">
+                    <input type="text" name="name" id="id_name" class="form-control" placeholder="" required>
                     <label for="id_name">Dataset Name</label>
                 </div>
 
