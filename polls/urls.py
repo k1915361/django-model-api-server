@@ -38,4 +38,5 @@ urlpatterns = [
     path("personal-model-repo/", views.personal_model_repo_view, name="personal model repo"),
     path("personal-dataset-repo/", views.personal_dataset_repo_view, name="personal dataset repo"),
     path("personal-dataset-analysis/", views.personal_dataset_analysis_view, name="personal dataset analysis"),
+    path("model-list-choose-one-to-relate-dataset/", views.model_list_choose_one_to_relate_a_dataset, name="model_list_choose_one_to_relate_dataset"),
 ]

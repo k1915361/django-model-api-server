@@ -15,6 +15,7 @@ from django.conf import settings
 from django.template import Context, Template
 from django.core.files.uploadhandler import MemoryFileUploadHandler, TemporaryFileUploadHandler
 from django.core.files.storage import FileSystemStorage
+import re
 import os
 import ast
 import datetime
@@ -344,7 +345,7 @@ def save_model_folder_info_to_database(name: str, user: User, model_type: str, m
         description=description,
     )
     model.save()
-    return
+    return model
 
 def save_dataset_folder_info_to_database(name: str, user: User, dataset_directory: str, ispublic: str):
     dataset = Dataset(
@@ -438,13 +439,13 @@ def timestamp_humanize(timestamp: datetime) -> str:
 def model_list_view_to_fork(request):
     template_name = "polls/model_list_choose_one_to_fork.html"
     public_model_list = Model.objects.filter(is_public=True).order_by("-created")
-    form = ChooseModelForkForm(request.POST)
     context = {'public_model_list': public_model_list}
 
     if request.method != "POST":
         form = ChooseModelForkForm()
         return render(request, template_name, {"form": form} | context)
     
+    form = ChooseModelForkForm(request.POST)
     chosen_model_id = request.POST.get('model_id')
 
     name = request.POST.get("name")
@@ -452,44 +453,56 @@ def model_list_view_to_fork(request):
     ispublic = request.POST.get("is_public")
     description = request.POST.get("description")
 
-    print(' --- chosen_model_id', chosen_model_id)
-
-
     fork_model(chosen_model_id, request.user, name, model_type, ispublic, description=description)
 
     return render(request, template_name, {"form": form} | context)
-    
-def fork_model(model_id, user, name, model_type, ispublic, description="", model_directory=""):
-    chosen_model = Model.objects.filter(id=model_id)
-    
-    # python copy folder to another directory
 
+def separate_original_folder_name(string: str) -> tuple:
+    """
+    in example
+    "1-20241010_101010-CS_modelA"
+    
+    out
+    ("1-20241010_101010-", "CS_modelA")
+    """
+
+    match = re.match(r"(\d+-\d{8}_\d{6}-)(.+)", string)
+    if match:
+        return match.group(1), match.group(2)
+    else:
+        return None
+    
+def fork_model(model_id, user, name, model_type, ispublic, description=""):
+    chosen_model = Model.objects.filter(id=model_id).first()
+    
     timestamp = now_Ymd_HMS()
 
-    chosen_model_folder_data = "TODO read folder from chosen_model.model_directory"
-
     root_dir = ROOT_MODEL_DIR
-    home_directory = get_home_directory(chosen_model_folder_data.directories.values())
+    home_directory = chosen_model.model_directory
     model_dir_unique = os.path.join(root_dir, f"{user.id}-{timestamp}")
-    model_dir = f"{model_dir_unique}-{home_directory}"
+    
+    home_directory_folder_name = os.path.basename(home_directory) 
+    parts = separate_original_folder_name(home_directory_folder_name)
+    original_folder_name = parts[1]
 
-    model_directory = model_dir
+    model_directory = f"{model_dir_unique}-{original_folder_name}"
 
     result = copy_directory(chosen_model.model_directory, model_directory)
 
-    if result == "OSError - fail to copy":
+    if result == "OSError copy directory":
         return
 
-    save_model_folder_info_to_database(name, user, model_type, model_directory, ispublic, original_model=chosen_model, description=description)
+    model = save_model_folder_info_to_database(name, user, model_type, model_directory, 
+        ispublic, original_model=chosen_model, description=description)
 
-    return
+    return model
 
 def copy_directory(src: str, dest: str):
     try:
         shutil.copytree(src, dest)
     except OSError as err:
-        print("Error - copy_folder(): % s" % err)
-        return "OSError - fail to copy"
+        print("OSError - copy_directory() - fail to copy directory: % s" % err)
+        return "OSError copy directory"
     return
 
 def upload_model(request):
@@ -526,6 +539,23 @@ def personal_dataset_repo_view(request):
 
     context = {'private_dataset_list': dataset}
     return upload_folder(request, template_name, context)
+
+def model_list_choose_one_to_relate_a_dataset(request):
+    template_name = "polls/model_list_choose_one_to_relate_a_dataset.html" 
+    public_model_list = Model.objects.filter(is_public=True).order_by("-created")
+    context = {'public_model_list': public_model_list}
+
+    if request.method != "POST":
+        return render(request, template_name, context)
+    
+    chosen_model_id = request.POST.get('model_id')
+    context['chosen_model_id'] = chosen_model_id
+    context['chosen_model'] = Model.objects.filter(id=chosen_model_id).first()
+    context['public_dataset_list'] = Dataset.objects.filter(is_public=True).order_by("-created")
+
+    print(' --- ', context['chosen_model_id'])
+
+    return render(request, "polls/dataset_list_choose_to_relate_a_model.html" , context)
 
 def change_password(request):
     if request.method == "POST":
