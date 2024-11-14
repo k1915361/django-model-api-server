@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Model, Dataset, ModelDataset, Image_Dataset, CSV_Dataset, Choice, Question
+from .models import Model, Dataset, ModelDataset, Choice, Question
 
 
 class QuestionAdmin(admin.ModelAdmin):
@@ -12,8 +12,6 @@ class QuestionAdmin(admin.ModelAdmin):
 admin.site.register(Model)
 admin.site.register(Dataset)
 admin.site.register(ModelDataset)
-admin.site.register(CSV_Dataset)
-admin.site.register(Image_Dataset)
 
 admin.site.register(Question, QuestionAdmin)
 admin.site.register(Choice)

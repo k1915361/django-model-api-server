@@ -1,7 +1,8 @@
 from django import forms
+from django.db.models import Q
 from django.db.models import F
 from django.http import HttpResponseRedirect
-from .models import Dataset, Model, Question, Choice
+from .models import Dataset, Model, ModelDataset, Question, Choice
 from django.urls import reverse
 from django.utils import timezone
 from django.views import generic
@@ -23,6 +24,7 @@ import shutil
 
 ROOT_DATASET_DIR = 'asset/user/dataset/'
 ROOT_MODEL_DIR = 'asset/user/model/'
+ROOT_TEMP = 'asset/temp/test'
 
 is_public_map_bool = {
     '1': False, '2': True, 
@@ -199,7 +201,7 @@ def login_user(request):
 
     if user is not None or request.user.is_authenticated:
         login(request, user)
-        return redirect('/polls/profile/')
+        return redirect('/polls/home/')
     
     return redirect('/polls/login-retry-view/')
 
@@ -289,6 +291,13 @@ def index_homepage_view(request):
         'model_page_obj': model_page_obj,
     }
 
+    if request.user.is_authenticated:
+        private_dataset_list = Dataset.objects.filter(is_public=False, user=request.user).order_by("-created")
+        context['dataset_private_page_obj'] = private_dataset_list
+
+        private_model_list = Model.objects.filter(is_public=False, user=request.user).order_by("-created")
+        context['model_private_page_obj'] = private_model_list
+
     return render(request, template_name, context)
 
 def user_dataset_list_path_view(request, context={}):
@@ -355,7 +364,7 @@ def save_dataset_folder_info_to_database(name: str, user: User, dataset_director
         is_public=is_public_map_bool[ispublic],
     )
     dataset.save()
-    return
+    return dataset
 
 def save_folder(files: list, directories: dict, user: User, timestamp: str, root_dir: str = ROOT_DATASET_DIR, name: str = ""):
     home_directory = get_home_directory(directories.values())
@@ -529,6 +538,9 @@ def upload_model(request):
     return render(request, "polls/upload_model.html", {"form": form})
 
 def personal_dataset_repo_view(request):
+    if not request.user.is_authenticated:
+        return redirect('/polls/login-view/')
+
     template_name = "polls/personal_dataset_repo.html"
     dataset = Dataset.objects.filter(is_public=False, user=request.user).annotate(
         updated_str = F('updated')
@@ -582,8 +594,85 @@ def get_queryset(self):
     ]
 
 def process_model_options_view(request):
+    if not request.user.is_authenticated:
+        return redirect('/polls/login-view/')
+    
     template_name = "polls/process_model_options.html"
-    return render(request, template_name)
+    dataset_list = Dataset.objects.filter(is_public=True).order_by("-created")
+    model_list = Model.objects.filter(is_public=True).order_by("-created")
+    private_dataset_list = Dataset.objects.filter(is_public=False, user=request.user).order_by("-created")
+    private_model_list = Model.objects.filter(is_public=False, user=request.user).order_by("-created")
+
+    context = {
+        "public_dataset_list": dataset_list,
+        "public_model_list": model_list,
+        'private_dataset_list': private_dataset_list,
+        'private_model_list': private_model_list,
+    }
+
+    if request.method != 'POST':
+        return render(request, template_name, context=context)
+
+    model_id = request.POST.get("model_id")
+    dataset_id = request.POST.get("dataset_id")
+    uploaded_dataset = request.FILES.getlist("form_dataset_folder")
+    uploaded_model = request.FILES.getlist("form_model_folder")
+    dataset_directories_str = request.POST.get("dataset_folder_directories")
+    model_directories_str = request.POST.get("model_folder_directories")
+    model_name = request.POST.get("model_name")
+    model_type = request.POST.get("model_type")
+    model_ispublic = request.POST.get("model_is_public")
+    
+    dataset_name = request.POST.get("dataset_name")
+    dataset_ispublic = request.POST.get("dataset_is_public")
+    
+    if model_directories_str:
+        model_directories_dict = ast.literal_eval(model_directories_str)
+
+    if dataset_directories_str:
+        dataset_directories_dict = ast.literal_eval(dataset_directories_str)
+
+    timestamp = now_Ymd_HMS()
+
+    print(' - uploaded_dataset - ', uploaded_dataset)
+    print(' - uploaded_model - ', uploaded_model)
+    print(' - dataset_directories - ', dataset_directories_str)
+    print(' - model_directories - ', model_directories_str)
+
+    if len(uploaded_model) != 0 and len(model_directories_dict) != 0 and model_name and model_type and model_ispublic: 
+        print(' - uploaded model ')
+        model_directory = save_folder(uploaded_model, model_directories_dict, request.user, timestamp, root_dir=ROOT_MODEL_DIR)
+        model = save_model_folder_info_to_database(model_name, request.user, model_type, model_directory, model_ispublic)
+    
+    elif len(uploaded_model) == 0:
+        print(' - no uploaded model ')
+        model = Model.objects.filter(id=model_id).first()
+        context['chosen_model'] = model
+    
+    if len(uploaded_dataset) != 0 and len(dataset_directories_dict) != 0 and dataset_name and dataset_ispublic:
+        print(' - uploaded dataset ')
+        dataset_directory = save_folder(uploaded_dataset, dataset_directories_dict, request.user, timestamp, root_dir=ROOT_DATASET_DIR)
+        dataset = save_dataset_folder_info_to_database(dataset_name, request.user, dataset_directory, dataset_ispublic)
+
+    elif len(uploaded_dataset) == 0:
+        print(' - no uploaded dataset ')
+        dataset = Dataset.objects.filter(id=dataset_id).first()
+        context['chosen_dataset'] = dataset
+    
+    if model and dataset:
+        model_dataset = ModelDataset(model=model, dataset=dataset)
+    
+    model_dataset.save()
+
+    if model_id:
+        filtered_model_dataset_list = ModelDataset.objects.filter(model = model) 
+        
+        dataset_ids = filtered_model_dataset_list.values_list('dataset__id', flat=True)
+        
+        dataset_options = Dataset.objects.filter(id__in=dataset_ids)
+        context['dataset_options'] = dataset_options
+
+    return render(request, template_name, context=context)
 
 def human_reinforced_feedback_view(request):
     template_name = "polls/human_reinforced_feedback.html"

@@ -11,16 +11,18 @@
 <body>
 
     {% block topbar %}
-    <div class="d-flex justify-content-center border border-light-subtle bg-light-subtle">
+    <div class="d-flex justify-content-center border border-light-subtle ">
         <nav class="navbar navbar-expand-lg">
             <div class="container-fluid gap-1">
                 <div class="d-flex me-3">
-                    <h4>
-                        😊
-                        <span class="text-body-secondary fw-lighter fs-6">
-                            logo
-                        </span>
-                    </h4>
+                    <a href="/polls/home/" class="text-black link-dark link-underline-dark link-underline-opacity-0">
+                        <h4>
+                            😊
+                            <span class="text-body-secondary fw-lighter fs-6">
+                                logo
+                            </span>
+                        </h4>
+                    </a>
                 </div>
                 <form class="d-flex" role="search">
                     <div class="input-group ">
@@ -41,6 +43,14 @@
                           </svg>
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end">
+                        <li>
+                            <a href="/polls/home" class="dropdown-item">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-house" viewBox="0 0 16 16">
+                                    <path d="M8.707 1.5a1 1 0 0 0-1.414 0L.646 8.146a.5.5 0 0 0 .708.708L2 8.207V13.5A1.5 1.5 0 0 0 3.5 15h9a1.5 1.5 0 0 0 1.5-1.5V8.207l.646.647a.5.5 0 0 0 .708-.708L13 5.793V2.5a.5.5 0 0 0-.5-.5h-1a.5.5 0 0 0-.5.5v1.293zM13 7.207V13.5a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5V7.207l5-5z"/>
+                                </svg>
+                                Home
+                            </a>
+                        </li>
                         <li>
                             <a href="/polls/profile" class="dropdown-item">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-person-circle" viewBox="0 0 16 16">
@@ -118,9 +128,17 @@
     <div class="container-fluid" id="sidebar">
         <div class="row flex-nowrap">
             {% block sidebar %}
-            <div class="col-auto col-md-2 col-xl-2 px-sm-1 px-0 bg-light-subtle border border-top-0 border-light-subtle d-none d-sm-inline">
-                <div class="d-flex flex-column align-items-center align-items-sm-start px-3 pt-2 text-white min-vh-100">
-                    <ul class="nav ms-1 mt-3 nav-pills flex-column gap-3 mb-sm-auto mb-0 align-items-center align-items-sm-start" id="menu">
+            <div class="col-auto col-xl-3 col-lg-2 col-md-2 col-sm-2 col-xs-2 px-sm-0 px-0 bg-light-subtle border border-top-0 border-light-subtle d-none d-sm-inline">
+                <div class="d-flex flex-column align-items-end ms-xl-5 ms-lg-3 ms-md-0 mx-sm-0 px-sm-0 ps-0 align-items-sm-start pt-2 text-white min-vh-100">
+                    <ul class="nav mt-4 ms-xl-5 nav-pills flex-column gap-3 mb-sm-auto mb-0 align-self-end align-items-start ps-1 pe-3 text-break" id="menu">
+                        <li>
+                            <a href="/polls/home/" class="px-0 text-black link-dark link-underline-dark link-underline-opacity-10 link-underline-opacity-50-hover">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-house" viewBox="0 0 16 16">
+                                    <path d="M8.707 1.5a1 1 0 0 0-1.414 0L.646 8.146a.5.5 0 0 0 .708.708L2 8.207V13.5A1.5 1.5 0 0 0 3.5 15h9a1.5 1.5 0 0 0 1.5-1.5V8.207l.646.647a.5.5 0 0 0 .708-.708L13 5.793V2.5a.5.5 0 0 0-.5-.5h-1a.5.5 0 0 0-.5.5v1.293zM13 7.207V13.5a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5V7.207l5-5z"/>
+                                </svg>
+                                Home
+                            </a>
+                        </li>
                         <li>
                             <a href="/polls/profile" class="px-0 text-black link-dark link-underline-dark link-underline-opacity-10 link-underline-opacity-50-hover">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-person-circle" viewBox="0 0 16 16">

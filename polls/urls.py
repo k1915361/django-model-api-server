@@ -8,13 +8,13 @@ from . import api
 app_name = 'polls'
 urlpatterns = [
     path("", views.index_homepage_view, name="index"),
+    path("home/", views.index_homepage_view, name="index"),
     path("profile/", views.profile_view, name="profile"),
     path("<int:pk>/", views.DetailView.as_view(), name="detail"),
     path("<int:pk>/results/", views.ResultsView.as_view(), name="results"),
     path("<int:question_id>/vote/", views.vote, name="vote"),
     path("logout/", views.logout_view, name="logout"),
     path("login-view/", views.login_view, name="login view"),
-    path("login-api/", api.login_api, name="login api"),
     path("login-retry-view/", views.login_retry_view, name="login retry view"),
     path("login-view/login/", views.login_user, name="login"),
     path("login-retry-view/login/", views.login_user, name="retry login"),
@@ -39,4 +39,7 @@ urlpatterns = [
     path("personal-dataset-repo/", views.personal_dataset_repo_view, name="personal dataset repo"),
     path("personal-dataset-analysis/", views.personal_dataset_analysis_view, name="personal dataset analysis"),
     path("model-list-choose-one-to-relate-dataset/", views.model_list_choose_one_to_relate_a_dataset, name="model_list_choose_one_to_relate_dataset"),
+    
+    path("login-api/", api.login_api, name="login api"),
+    path("upload-dataset-api/", api.upload_dataset_api, name="upload dataset api"),
 ]
