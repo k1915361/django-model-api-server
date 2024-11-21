@@ -88,6 +88,8 @@ python manage.py sqlmigrate polls 0008
 python manage.py sqlmigrate polls 0009
 python manage.py sqlmigrate polls 0010
 python manage.py sqlmigrate polls 0011
+python manage.py sqlmigrate polls 0012
+python manage.py sqlmigrate polls 0013
 
 python manage.py migrate
 ```
@@ -256,6 +258,7 @@ ROOT_URLCONF = 'ku_djangoo.urls'
 
 ```sh
 pip freeze > requirements.txt
+python3.11 -m pip freeze > requirements_python_3_11.txt
 ```
 
 ## Hiding Sidebar at mobile screen
@@ -737,6 +740,78 @@ class ModelDataset(models.Model):
     dataset = models.ForeignKey(Dataset, on_delete=models.DO_NOTHING)
     created = models.DateTimeField(default=timezone.now) 
 ```
+
+## Preserving form data while navigating pages
+
+<https://stackoverflow.com/questions/71443933/paginator-and-post-request-for-searchform>
+
+```py
+def order_list(request):
+    ...
+    get_data = request.GET.copy()
+    page = get_data.pop('page', None)
+    ...
+
+    context = {
+        ...,
+        'query_string': get_data.urlencode(),
+     }
+    return render(request, 'order/list.html', context)
+```
+
+Template
+```html
+    <a href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.next_page_number }}">next</a>
+```
+
+## Implementing Live search
+
+<https://www.circumeo.io/blog/entry/build-a-live-search-feature-with-django-using-htmx-and-postgresql-fts-in-10-minutes/>
+
+This page shows implementation of Search Vector Field Django's `SearchQuery`.
+
+This project Implements simple `name` search with `icontains` (case-insensitive `i`) at the time of writing this section.
+
+<https://docs.djangoproject.com/en/5.1/ref/contrib/postgres/lookups/#std-fieldlookup-trigram_similar>
+
+This page shows other options for searching: 
+
+`__trigram_similar`: Middlesborough ~ Middlesbrough
+
+`__trigram_word_similar`: Middlesborough ~ Middlesbrough
+
+`__unaccent`: México ~ Mexico.
+
+<https://docs.djangoproject.com/en/5.1/ref/models/querysets/>
+
+`__in`: eg. `blog__name__in=names`. search items that matches one item from a list.
+
+`__endswith`: eg. `headline__endswith="Lennon"`.
+
+`__range`: `pub_date__range=(start_date, end_date)`
+
+`gte`: Greater than or equal to.  
+`lt`: Less than.  
+`lte`: Less than or equal to.  
+`startswith`  
+`endswith`  
+
+`pub_date__iso_year__gte=2005`
+
+Implementation of live search can be seen at template file `polls/templates/polls/personal_dataset_repo.html` below the line `Optional - Link a model to a chosen dataset:` and `polls/views.py` at function named `personal_dataset_repo_view` or `search_dataset_name`.
+
+note that the function and view-function is seperated `search_dataset_name` and `search_dataset_name_view`. 
+
+State management:  
+(1) the function adds items to `context`,  
+(2) temporarily stores values (id, page_no., etc.) into html `input`s (`hidden` or visible),  
+(3) the function brings back the values with `request.POST.get` and then feeds back to the `context`.  
+
+This enables temporarily storing user actions, options, page navigations (of multiple paginated lists), chosen item IDs, and multiple values (int, string, and possibly binary). 
+
+Only non-sensitive data is stored in the HTML content at the client side. 
+
+This approach do not require caching or `session` caching at server side. 
 
 ## Setting up ASGI
 

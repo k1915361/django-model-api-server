@@ -35,6 +35,7 @@ LOGIN_REDIRECT_URL = '/polls/login-view'
 # Application definition
 
 INSTALLED_APPS = [
+    "django.contrib.postgres",
     'django.contrib.humanize',
     "polls.apps.PollsConfig",
     "django.contrib.admin",
@@ -76,6 +77,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'ku_djangoo.wsgi.application'
 
+DATA_UPLOAD_MAX_MEMORY_SIZE = 26214400000 # 25 GB
 
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
