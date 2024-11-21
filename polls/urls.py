@@ -8,6 +8,7 @@ from . import api
 app_name = 'polls'
 urlpatterns = [
     path("", views.index_homepage_view, name="index"),
+    path("search-dataset-name", views.search_dataset_name_view, name="search dataset name"),
     path("home/", views.index_homepage_view, name="index"),
     path("profile/", views.profile_view, name="profile"),
     path("<int:pk>/", views.DetailView.as_view(), name="detail"),

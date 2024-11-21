@@ -7,54 +7,95 @@
     <h5>Dataset Management</h5>
 </div>
 <div class="container">
+    <form method="post" enctype="multipart/form-data" >
+    {% csrf_token %}
     <div class="row align-items-start gap-1">
         <div class="row gap-1">
             <div class="col p-1 outline-tertiary rounded border border-light-subtle">
                 <div class="row gap-1 m-0">
-                    {% if private_dataset_list %}
-                        {% for dataset in private_dataset_list %}
-                            <a class="btn btn-light border-light-subtle shadow-sm text-smd text-start" temphref="url 'polls:private-dataset-data-view/?page=' data.id" href="#" role="button">
-                                <span class="text-sm">{{ dataset.name }}</span> 
-                                <div>
-                                    <span class="text-body-secondary text-sm">{{ dataset.user }}</span> 
-                                    <span class="text-body-secondary text-sm">• {{ dataset.updated|timesince|upto }} ago</span>
-                                </div>
-                            </a>
-                        {% endfor %}
-                    {% else %}
-                        <p>No Dataset are available.</p>
-                    {% endif %}
+                    
+                    <input name="dataset_list_page_num" value="{{dataset_list_page_num}}" hidden>
+                    <input type="text" id="directories" name="directories" hidden/>
+                    <input name="chosen_dataset_id" value="{{ chosen_dataset_id }}" hidden>
 
-                    <a class="btn btn-light border-light-subtle shadow-sm" href="/polls/personal-dataset-analysis/" role="button">Dataset A</a>
-                    <a class="btn btn-light border-light-subtle shadow-sm" href="/polls/personal-dataset-analysis/" role="button">Dataset B</a>
-                    <a class="btn btn-light border-light-subtle shadow-sm" href="/polls/personal-dataset-analysis/" role="button">Dataset C</a>
-                </div>
-            </div>
-            <div class="col p-1 outline-tertiary rounded border border-light-subtle">
-                <div class="row gap-1 m-0">
-                    <button class="btn btn-light border-light-subtle shadow-sm">Dataset Analysis</button>
-                    <div class="dropdown d-grid px-0">
-                        <button class="btn btn-light dropdown-toggle border-light-subtle shadow-sm" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            Data Generation
+                    {% if dataset_list_to_view %}
+                        <div>My Dataset:</div>
+                        {% for dataset in dataset_list_to_view %}
+
+                        <button type="submit" name="submit_dataset_id" value="{{ dataset.id }}" class="btn btn-light border-light-subtle shadow-sm text-smd text-start" role="button">
+                            <span class="text-sm">{{ dataset.name }}</span> 
+                            <div>
+                                {% if dataset.original_dataset %}
+                                <span class="text-body-secondary text-sm">forked • </span>
+                                {% endif %}
+                                {% if dataset.is_public %}
+                                <span class="text-body-secondary text-sm">public • </span>
+                                {% endif %}
+                                {% if not dataset.is_public %}
+                                <span class="text-body-secondary text-sm">private • </span>
+                                {% endif %}
+                                <span class="text-body-secondary text-sm">{{ dataset.user }}</span> 
+                                <span class="text-body-secondary text-sm">• {{ dataset.updated|timesince|upto }} ago</span>
+                            </div>
                         </button>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#">action A</a></li>
-                            <li><a class="dropdown-item" href="#">action B</a></li>
-                            <li><a class="dropdown-item" href="#">action C</a></li>
-                        </ul>
-                    </div>
-                    <button class="btn btn-light border-light-subtle shadow-sm">Cleaning</button>
-                    <button class="btn btn-light border-light-subtle shadow-sm">Enrichment</button>
-                    <button class="btn btn-light border-light-subtle shadow-sm">Data Curation</button>
-                    <button class="btn btn-light border-light-subtle shadow-sm">Balancing</button>
-                    <button class="btn btn-light border-light-subtle shadow-sm">XAI</button>
+                        {% endfor %}
+                        <div class="pagination">
+                            <span class="step-links">
+                                <button type="submit" name="dataset_list_page_action" value="dataset_list_page_first" class="btn btn-outline-secondary btn-sm" 
+                                    {{ dataset_list_page_previous_disabled }}>
+                                    &laquo; first
+                                </button>
+                                <button type="submit" name="dataset_list_page_action" value="dataset_list_page_previous" class="btn btn-outline-secondary btn-sm" 
+                                    {{ dataset_list_page_previous_disabled }}>
+                                    previous
+                                </button>
+                                <span class="current">
+                                    Page {{ dataset_list_page_num }}-{{ dataset_list_page_num_end }} of {{ dataset_list|length }}.
+                                </span>
+                                <button type="submit" name="dataset_list_page_action" value="dataset_list_page_next" class="btn btn-outline-secondary btn-sm" 
+                                    {{ dataset_list_page_next_disabled }}>
+                                    next
+                                </button>
+                                <button type="submit" name="dataset_list_page_action" value="dataset_list_page_last" class="btn btn-outline-secondary btn-sm" 
+                                    {{ dataset_list_page_next_disabled }}>
+                                    last &raquo;
+                                </button>
+                            </span>
+                        </div>
+                        {% else %}
+                        <p>No User Private Dataset are available.</p>
+                    {% endif %}                    
+                    
                 </div>
             </div>
             <div class="col p-2 outline-tertiary rounded border border-light-subtle">
-                Dataset Details
-                <p></p>
-                <p></p>
-                <p></p>
+                <div>Dataset README</div>
+                {{ readme_markdown|safe }}
+                {% if not readme_markdown %}
+                    Click a dataset to view their README content.
+                {% endif %}
+            </div>
+        </div>
+        <div class="outline-tertiary rounded border border-light-subtle">
+            <div class="p-1 d-grid gap-1 col-4 mx-auto">
+                <button class="btn btn-light border-light-subtle shadow-sm">Dataset Analysis</button>
+                <div class="dropdown-center d-grid">
+                    <button class="btn btn-light dropdown-toggle border-light-subtle shadow-sm" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        Data Generation
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="#">action A</a></li>
+                        <li><a class="dropdown-item" href="#">action B</a></li>
+                        <li><a class="dropdown-item" href="#">action C</a></li>
+                    </ul>
+                </div>                
+                <button class="btn btn-light border-light-subtle shadow-sm">Cleaning</button>                
+                <button class="btn btn-light border-light-subtle shadow-sm">Enrichment</button>                
+                <button class="btn btn-light border-light-subtle shadow-sm">Data Curation</button>                
+                <button class="btn btn-light border-light-subtle shadow-sm">Balancing</button>                
+                <button class="btn btn-light border-light-subtle shadow-sm width-5">XAI</button>
+                <div class="row gap-1 m-0">
+                </div>
             </div>
         </div>
         <form method="post" enctype="multipart/form-data" class="row gap-1">        
@@ -66,11 +107,70 @@
                         (Folder and Multiple Files)
                     </span>
                 </label>
-                <input type="file" name="file" id="id_folder" class="form-control mb-1" webkitdirectory directory mozdirectory multiple required>
-                <input type="text" id="directories" name="directories" hidden/>
+                <input type="file" name="file" id="id_folder" class="form-control mb-1" webkitdirectory directory mozdirectory multiple>
+
+                <div class="pt-1">Optional - Link a model to a chosen dataset:</div>
+
+                <div id="search_form_container" class="d-grid p-0 m-0 pb-2">
+                    <form method="post">
+                        {% csrf_token %}
+                        <div id="event-search" class="justify-content-center">
+                            <div class="d-flex justify-content-center">
+                                <input id="event-search-input"
+                                    name="search-dataset-query"
+                                    class="w-100 p-1 form-control"
+                                    type="text"
+                                    value="{{ search_dataset_query_value }}"
+                                    placeholder="Search a model name"
+                                    hx-post="/polls/search-dataset-name"
+                                    hx-select="#models-content-inner"
+                                    hx-swap="outerHTML"
+                                    hx-trigger="input changed delay:200ms, search"
+                                    hx-target="#models-content-inner" />
+                                <button id="search-submit-btn" type="submit" class="btn btn-light shadow-sm">
+                                    <i class="bi bi-search"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="models-content" class="d-flex justify-content-center">
+                        <div id="models-content-inner" class="p-0">
+                            {% for model in models %}
+                                <div class="search-result">
+                                    <div class="search-result-inner">
+                                        <div class="form-check bg-body-tertiary rounded border border-light-subtle shadow-sm ">
+                                            <label class="form-check-label p-1" for="id_model_{{ model.id }}">
+                                                <input class="form-check-input" type="radio" name="chosen_model_id" value="{{ model.id }}" id="id_model_{{ model.id }}" 
+                                                    {% if model.id == chosen_model_id %}
+                                                        checked
+                                                    {% endif %}
+                                                >
+                                                <a class="text-smd text-start" temphref="url 'polls:private-model-data-view/?page=' data.id" href="#" role="button">
+                                                    <span class="text-sm">{{ model.name }}</span>                             
+                                                </a>
+                                                <div>
+                                                    <span class="text-body-secondary text-sm">{{ model.user.username }}</span> 
+                                                    <span class="text-body-secondary text-sm">• {{ model.updated|timesince|upto }} ago</span>
+                                                    {% if model.original_model != None and model.user == request.user %}
+                                                        <span class="text-body-secondary text-sm">• forked</span>
+                                                    {% endif %}
+                                                    {% if model.is_public %}
+                                                        <span class="text-body-secondary text-sm">• public</span>
+                                                    {% else %}
+                                                        <span class="text-body-secondary text-sm">• private</span>
+                                                    {% endif %}
+                                                </div>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
 
                 <div class="form-floating mb-1">
-                    <input type="text" name="name" id="id_name" class="form-control" placeholder="" required>
+                    <input type="text" name="name" id="id_name" class="form-control" placeholder="">
                     <label for="id_name">Dataset Name</label>
                 </div>
 
@@ -78,20 +178,20 @@
                     <fieldset>
                         <div class="form-check form-check-inline">
                             <label class="form-check-label" for="id_is_public_0">
-                                <input class="form-check-input" type="radio" name="is_public" value="1" id="id_is_public_0" required checked>
+                                <input class="form-check-input" type="radio" name="is_public" value="1" id="id_is_public_0" checked>
                                 private
                             </label>
                         </div>
                         <div class="form-check form-check-inline">
                             <label class="form-check-label" for="id_is_public_1">
-                                <input class="form-check-input" type="radio" name="is_public" value="2" id="id_is_public_1" required>
+                                <input class="form-check-input" type="radio" name="is_public" value="2" id="id_is_public_1">
                                 public
                             </label>
                         </div>
                     </fieldset>
                 </div>
                 
-                <button type="submit" class="btn btn-light border-light-subtle shadow-sm">Upload</button>
+                <button type="submit" name="upload_dataset" class="btn btn-light border-light-subtle shadow-sm">Upload</button>
             </div>
             <div class="col px-0 rounded border border-light-subtle">
                 <div class="row gap-1 m-1">
@@ -127,9 +227,10 @@
             });
         </script>
 
+    </form>
     </div>
+    <div style="height: 600px;" name="bottom space for accessibility/usability for UI"></div>
 </div>
-
 
 
 {% endblock content %}

@@ -39,16 +39,11 @@
                             {% endfor %}
                         </ol>
                     {% endif %}
-                    <br/>
-                    <br/>
-                    <br/>
-                    <br/>
-                    <br/>
                     <div class="pagination">
                         <span class="step-links">
                             {% if model_page_obj.has_previous %}
-                                <a href="?model_page=1" class="btn btn-primary">&laquo; first</a>
-                                <a href="?model_page={{ model_page_obj.previous_page_number }}" class="btn btn-primary">previous</a>
+                                <a href="?model_page=1&dataset_page={{ dataset_page_obj.number }}" class="btn btn-primary">&laquo; first</a>
+                                <a href="?model_page={{ model_page_obj.previous_page_number }}&dataset_page={{ dataset_page_obj.number }}" class="btn btn-primary">previous</a>
                             {% endif %}
 
                             <span class="current">
@@ -56,11 +51,16 @@
                             </span>
 
                             {% if model_page_obj.has_next %}
-                                <a href="?model_page={{ model_page_obj.next_page_number }}" class="btn btn-primary">next</a>
-                                <a href="?model_page={{ model_page_obj.paginator.num_pages }}" class="btn btn-primary">last &raquo;</a>
+                                <a href="?model_page={{ model_page_obj.next_page_number }}&dataset_page={{ dataset_page_obj.number }}" class="btn btn-primary">next</a>
+                                <a href="?model_page={{ model_page_obj.paginator.num_pages }}&dataset_page={{ dataset_page_obj.number }}" class="btn btn-primary">last &raquo;</a>
                             {% endif %}
                         </span>
                     </div>
+                    <br/>
+                    <br/>
+                    <br/>
+                    <br/>
+                    <br/>
                 </div>
             </div>
         </div>
@@ -99,14 +99,13 @@
                                 {% endfor %}
                             </ol>
                         {% endif %}
-                        <br/>
-                        <br/>
-                        <br/>
                         <div class="pagination">
                             <span class="step-links">
                                 {% if dataset_page_obj.has_previous %}
-                                    <a href="?dataset_page=1" class="btn btn-primary">&laquo; first</a>
-                                    <a href="?dataset_page={{ dataset_page_obj.previous_page_number }}" class="btn btn-primary">previous</a>
+                                    <input name="dataset_page_num" value="{{ dataset_page_num }}" hidden> 
+                                    <input name="model_page_num" value="{{ model_page_num }}" hidden> 
+                                    <a href="?model_page={{ model_page_obj.number }}&dataset_page=1" class="btn btn-primary">&laquo; first</a>
+                                    <a href="?model_page={{ model_page_obj.number }}&dataset_page={{ dataset_page_obj.previous_page_number }}" class="btn btn-primary">previous</a>
                                 {% endif %}
 
                                 <span class="current">
@@ -114,11 +113,14 @@
                                 </span>
 
                                 {% if dataset_page_obj.has_next %}
-                                    <a href="?dataset_page={{ dataset_page_obj.next_page_number }}" class="btn btn-primary">next</a>
-                                    <a href="?dataset_page={{ dataset_page_obj.paginator.num_pages }}" class="btn btn-primary">last &raquo;</a>
+                                    <a href="?model_page={{ model_page_obj.number }}&dataset_page={{ dataset_page_obj.next_page_number }}" class="btn btn-primary">next</a>
+                                    <a href="?model_page={{ model_page_obj.number }}&dataset_page={{ dataset_page_obj.paginator.num_pages }}" class="btn btn-primary">last &raquo;</a>
                                 {% endif %}
                             </span>
                         </div>
+                        <br/>
+                        <br/>
+                        <br/>                        
                     </div>
                 </div>
             </div>

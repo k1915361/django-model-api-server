@@ -21,10 +21,19 @@ import os
 import ast
 import datetime
 import shutil  
+from pathlib import Path
+import markdown
+import json
+
+def get_markdown_fenced_code(extensions=["fenced_code"]):
+    return markdown.Markdown(extensions=extensions)
+
+MARKDOWN_FENCED_CODE = get_markdown_fenced_code()
 
 ROOT_DATASET_DIR = 'asset/user/dataset/'
 ROOT_MODEL_DIR = 'asset/user/model/'
 ROOT_TEMP = 'asset/temp/test'
+TEXT_FILE_EXTENSIONS = {".txt", ".md", ".rst", ".html", ""}
 
 is_public_map_bool = {
     '1': False, '2': True, 
@@ -125,6 +134,24 @@ class PrivateModelListPaginationView(forms.Form):
     paginate_by = 10
     model = Model
 
+def get_model__list(model, is_public: bool = True, order_by: str = "-created"):
+    return model.objects.filter(is_public=is_public).order_by(order_by)
+
+def get_model_list(model = Model, is_public: bool = True, order_by: str = "-created"):
+    return get_model__list(model, is_public=is_public, order_by=order_by)
+
+def get_dataset_list(model = Dataset, is_public: bool = True, order_by: str = "-created"):
+    return get_model__list(model, is_public=is_public, order_by=order_by)
+
+def get_user_model__list(model, user: User, is_public: bool = True, order_by: str = "-created"):
+    return model.objects.filter(is_public=is_public, user=user).order_by(order_by)
+
+def get_user_model_list(user: User, model = Model, is_public: bool = False, order_by: str = "-created"):
+    return get_user_model__list(model, user, is_public=is_public, order_by=order_by)
+
+def get_user_dataset_list(user: User, model = Dataset, is_public: bool = False, order_by: str = "-created"):
+    return get_user_model__list(model, user, is_public=is_public, order_by=order_by)
+
 def vote(request, question_id):
     question = get_object_or_404(Question, pk=question_id)
     try:
@@ -215,7 +242,7 @@ def public_dataset_list_view(request, context={}):
     template_name = "polls/public_dataset_list_view.html"
     base_html = get_base_html(request.user.is_authenticated)
     
-    dataset_list = Dataset.objects.filter(is_public=True).order_by("-created")
+    dataset_list = get_dataset_list()
     paginator = Paginator(dataset_list, 2)
     page_number = request.GET.get("page")
     page_obj = paginator.get_page(page_number)
@@ -232,7 +259,7 @@ def private_dataset_list_view(request, context={}):
     template_name = "polls/private_dataset_list_view.html"
     base_html = get_base_html(request.user.is_authenticated)
 
-    dataset_list = Dataset.objects.filter(is_public=False, user=request.user).order_by("-created")
+    dataset_list = get_user_dataset_list(request.user)
     paginator = Paginator(dataset_list, 2)
     page_number = request.GET.get("page")
     page_obj = paginator.get_page(page_number)
@@ -245,7 +272,7 @@ def public_model_list_view(request, context={}):
     template_name = "polls/public_model_list_view.html"
     base_html = get_base_html(request.user.is_authenticated)
     
-    model_list = Model.objects.filter(is_public=True).order_by("-created")
+    model_list = get_model_list()
     paginator = Paginator(model_list, 2)
     page_number = request.GET.get("page")
     page_obj = paginator.get_page(page_number)
@@ -262,7 +289,7 @@ def private_model_list_view(request, context={}):
     template_name = "polls/private_model_list_view.html"
     base_html = get_base_html(request.user.is_authenticated)
 
-    model_list = Model.objects.filter(is_public=False, user=request.user).order_by("-created")
+    model_list = get_user_model_list(request.user)
     paginator = Paginator(model_list, 2)
     page_number = request.GET.get("page")
     page_obj = paginator.get_page(page_number)
@@ -275,12 +302,12 @@ def index_homepage_view(request):
     template_name = "polls/index.html"
     base_html = get_base_html(request.user.is_authenticated)
     
-    dataset_list = Dataset.objects.filter(is_public=True).order_by("-created")
+    dataset_list = get_dataset_list()
     paginator = Paginator(dataset_list, 2)
-    page_number = request.GET.get("dataset_page")
-    dataset_page_obj = paginator.get_page(page_number)
+    dataset_page_number = request.GET.get("dataset_page")
+    dataset_page_obj = paginator.get_page(dataset_page_number)
 
-    model_list = Model.objects.filter(is_public=True).order_by("-created")
+    model_list = get_model_list()
     model_paginator = Paginator(model_list, 2)
     model_page_number = request.GET.get("model_page")
     model_page_obj = model_paginator.get_page(model_page_number)
@@ -292,10 +319,10 @@ def index_homepage_view(request):
     }
 
     if request.user.is_authenticated:
-        private_dataset_list = Dataset.objects.filter(is_public=False, user=request.user).order_by("-created")
+        private_dataset_list = get_user_dataset_list(request.user)
         context['dataset_private_page_obj'] = private_dataset_list
 
-        private_model_list = Model.objects.filter(is_public=False, user=request.user).order_by("-created")
+        private_model_list = get_user_model_list(request.user)
         context['model_private_page_obj'] = private_model_list
 
     return render(request, template_name, context)
@@ -447,7 +474,7 @@ def timestamp_humanize(timestamp: datetime) -> str:
 
 def model_list_view_to_fork(request):
     template_name = "polls/model_list_choose_one_to_fork.html"
-    public_model_list = Model.objects.filter(is_public=True).order_by("-created")
+    public_model_list = get_model_list()
     context = {'public_model_list': public_model_list}
 
     if request.method != "POST":
@@ -537,24 +564,128 @@ def upload_model(request):
         
     return render(request, "polls/upload_model.html", {"form": form})
 
+def iterate_folder(directory):
+    """
+    non-recursive root-only iteration.
+    """
+    for path in Path(directory).iterdir():
+        yield path
+
+def is_text_file(path):
+    return path.suffix.lower() in TEXT_FILE_EXTENSIONS
+
+def find_and_read_readme_text_file(directory: str):
+    for path in iterate_folder(directory):
+        if ("readme" in path.name.lower() 
+            and path.is_file()
+            and is_text_file(path)
+        ):
+            try:
+                content = path.read_text(encoding='utf-8')
+                return content
+            except UnicodeDecodeError as e:
+                print(f"`path.read_text(encoding='utf-8')`. Skipping non-text file: {path}. f{e}")
+            try:
+                content = path.read_text()
+                return content
+            except Exception as e:
+                print(f"`path.read_text()`. Skipping non-text file: {path}. f{e}")
+    return None
+
+def search_and_get_readme_markdown_by_directory(directory):
+    readme_text = find_and_read_readme_text_file(directory)
+    readme_markdown = MARKDOWN_FENCED_CODE.convert(readme_text)
+    return readme_markdown
+
+def search_dataset_name(request, context: dict = {}) -> dict:
+    models = []
+    q = ""
+
+    if request.method == "POST":
+        q = request.POST.get("search-dataset-query")
+        if q:
+            models = Model.objects.filter(
+                Q(name__icontains=q)
+                & (Q(is_public=False
+                     , user=request.user) 
+                    | Q(is_public=True))
+            )[:5]
+
+    if not models:
+        models = Model.objects.all()[:5]
+    
+    context = context | {
+        "search_dataset_query_value": q, 
+        "models": models
+    }
+    return context
+
+def search_dataset_name_view(request, context: dict = {}, template_name: str = "polls/personal_dataset_repo.html"):
+    context = search_dataset_name(request, context)    
+    return render(request, template_name, context)
+
+def read_dataset_info_json(directory: str, filename: str = "dataset_info.json"):
+    file_path = os.path.join(ROOT_DATASET_DIR, directory or "1-20241107_192036-CS_dataset", filename)
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+        return data.get('type', None)
+    except FileNotFoundError:
+        print(f"Error: File not found at {file_path}")
+    except json.JSONDecodeError:
+        print(f"Error: File content at {file_path} is not valid JSON")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+    
+    return None
+
 def personal_dataset_repo_view(request):
     if not request.user.is_authenticated:
         return redirect('/polls/login-view/')
 
     template_name = "polls/personal_dataset_repo.html"
-    dataset = Dataset.objects.filter(is_public=False, user=request.user).annotate(
-        updated_str = F('updated')
-    ).order_by("-created")
     
-    for datast in dataset:
-        datast.updated_str = timestamp_humanize(datast.updated_str)
+    dataset_list = Dataset.objects.filter(
+        Q(user=request.user)
+        & (Q(is_public=False) 
+           | Q(is_public=True
+               , original_dataset__isnull=False))
+    )
 
-    context = {'private_dataset_list': dataset}
-    return upload_folder(request, template_name, context)
+    context = { 
+        'dataset_list': dataset_list,
+    }
+
+    POSTget = request.POST.get
+    context['Nper_page'] = int(POSTget('Nper_page', 2))    
+    context['chosen_dataset_id'] = POSTget('chosen_dataset_id')
+    context['submit_dataset_id'] = POSTget('submit_dataset_id')
+    context['upload_dataset'] = POSTget('upload_dataset')
+
+    if context['submit_dataset_id'] != None:
+        context['chosen_dataset_id'] = context['submit_dataset_id']
+
+    context = list_pagination_v2(request, dataset_list, 'dataset_list', context) 
+
+    if context['chosen_dataset_id'] != None and context['chosen_dataset_id'] != '':
+        dataset = Dataset.objects.filter(id=context['chosen_dataset_id']).first()
+        readme_markdown = search_and_get_readme_markdown_by_directory(dataset.dataset_directory)
+        context['readme_markdown'] = readme_markdown
+
+    if context['upload_dataset'] != None:
+        return upload_folder(request, template_name, context)
+        
+    context = search_dataset_name(request, context)
+
+    q = read_dataset_info_json('')
+    print('read_dataset_info_json')
+    print(q)
+
+    return render(request, template_name, context)
 
 def model_list_choose_one_to_relate_a_dataset(request):
     template_name = "polls/model_list_choose_one_to_relate_a_dataset.html" 
-    public_model_list = Model.objects.filter(is_public=True).order_by("-created")
+    public_model_list = get_model_list()
     context = {'public_model_list': public_model_list}
 
     if request.method != "POST":
@@ -563,9 +694,7 @@ def model_list_choose_one_to_relate_a_dataset(request):
     chosen_model_id = request.POST.get('model_id')
     context['chosen_model_id'] = chosen_model_id
     context['chosen_model'] = Model.objects.filter(id=chosen_model_id).first()
-    context['public_dataset_list'] = Dataset.objects.filter(is_public=True).order_by("-created")
-
-    print(' --- ', context['chosen_model_id'])
+    context['public_dataset_list'] = get_dataset_list()
 
     return render(request, "polls/dataset_list_choose_to_relate_a_model.html" , context)
 
@@ -593,85 +722,272 @@ def get_queryset(self):
         :5
     ]
 
+def list_pagination_v2(request, list, namespace: str, context: dict):
+    """
+        namespace: eg. 'public_model_list', 'private_dataset_list'
+    """    
+    action = request.POST.get(f'{namespace}_page_action', '')
+    context[f'{namespace}_page_num'] = int_(request.POST.get(f'{namespace}_page_num'), 0)
+    Nper_page = context.get(f'{namespace}_Nper_page') or context.get('Nper_page', 2)
+
+    if "first" in action:
+        context[f'{namespace}_page_num'] = 0
+        context[f'{namespace}_page_previous_disabled'] = 'disabled'
+    if "previous" in action and context[f'{namespace}_page_num'] - Nper_page >= 0:
+        context[f'{namespace}_page_num'] -= Nper_page
+    if "previous" in action and context[f'{namespace}_page_num'] - Nper_page < 0:
+        context[f'{namespace}_page_num'] = 0
+    if "next" in action and context[f'{namespace}_page_num'] + Nper_page < len(list):
+        context[f'{namespace}_page_num'] += Nper_page
+    if context[f'{namespace}_page_num'] + Nper_page > len(list):
+        context[f'{namespace}_page_num_end'] = len(list)        
+    if "last" in action:
+        context[f'{namespace}_page_num'] = len(list) - Nper_page
+        context[f'{namespace}_page_next_disabled'] = 'disabled'
+    if context[f'{namespace}_page_num'] - Nper_page > 0:
+        context[f'{namespace}_page_previous_disabled'] = ''
+    if context[f'{namespace}_page_num'] == 0:
+        context[f'{namespace}_page_previous_disabled'] = 'disabled'
+    if context[f'{namespace}_page_num'] + Nper_page < len(list):
+        context[f'{namespace}_page_next_disabled'] = ''
+    if context[f'{namespace}_page_num'] + Nper_page >= len(list):
+        context[f'{namespace}_page_next_disabled'] = 'disabled'    
+    if context.get(f'{namespace}_page_num_end') == None:
+        context[f'{namespace}_page_num_end'] = context[f'{namespace}_page_num'] + Nper_page
+    if context[f'{namespace}_page_num'] > len(list):
+        context[f'{namespace}_page_num'] = len(list) - Nper_page
+        context[f'{namespace}_page_num_end'] = len(list)
+
+    context[f'{namespace}_to_view'] = list[context[f'{namespace}_page_num']: context[f'{namespace}_page_num_end']]
+
+    return context
+
+def list_pagination(model_list, action: str, page_no: int, Nper_page: int):
+    previous_disabled = ''
+    next_disabled = ''
+    if "first" in action:
+        page_no = 0 
+        previous_disabled = 'disabled'
+    if "previous" in action and page_no - Nper_page >= 0:
+        page_no -= Nper_page 
+    if "next" in action and page_no + Nper_page < len(model_list):
+        page_no += Nper_page
+    if "last" in action:
+        page_no = len(model_list) - Nper_page
+        next_disabled = 'disabled'
+
+    if page_no - Nper_page > 0:
+        previous_disabled = ''
+    if page_no == 0:
+        previous_disabled = 'disabled'
+
+    if page_no + Nper_page < len(model_list):
+        next_disabled = ''
+    if page_no + Nper_page >= len(model_list):
+        next_disabled = 'disabled'
+
+    return (page_no, 
+            model_list[page_no: page_no + Nper_page], 
+            previous_disabled, 
+            next_disabled)
+
+def save_model_to_file_system_and_database(user: User, uploaded_model, model_directories_str: str, model_name: str, model_type: str, model_ispublic: str, timestamp: datetime):
+    if len(uploaded_model) != 0 and model_directories_str != None and len(model_directories_str) != 0 and model_directories_str != "":
+        model_directories_dict = ast.literal_eval(model_directories_str)
+        
+    if len(uploaded_model) != 0 and len(model_directories_dict) != 0 and model_name and model_type and model_ispublic: 
+        model_directory = save_folder(
+            uploaded_model, 
+            model_directories_dict, 
+            user, 
+            timestamp, 
+            root_dir=ROOT_MODEL_DIR
+        )
+        model = save_model_folder_info_to_database(
+            model_name, 
+            user, 
+            model_type, 
+            model_directory, 
+            model_ispublic
+        )
+        return model
+
+def save_dataset_to_file_system_and_database(user: User, uploaded_dataset, dataset_directories_str: str, dataset_name: str, dataset_ispublic: str, timestamp: datetime):
+    if len(uploaded_dataset) != 0 and dataset_directories_str != None and len(dataset_directories_str) != 0 and dataset_directories_str != "":
+        dataset_directories_dict = ast.literal_eval(dataset_directories_str)
+        
+    if len(uploaded_dataset) != 0 and len(dataset_directories_dict) != 0 and dataset_name and dataset_ispublic:
+        dataset_directory = save_folder(
+            uploaded_dataset, 
+            dataset_directories_dict, 
+            user, 
+            timestamp, 
+            root_dir=ROOT_DATASET_DIR
+        )
+        dataset = save_dataset_folder_info_to_database(
+            dataset_name, 
+            user, 
+            dataset_directory, 
+            dataset_ispublic
+        )
+        return dataset
+
+def set_chosen_model(model: Model, uploaded_model, chosen_model_id, context: dict):
+    if model == None and len(uploaded_model) == 0 and type(chosen_model_id) == int:
+        model = Model.objects.filter(id=chosen_model_id).first()
+        context['chosen_model'] = model
+        context['chosen_model_id'] = model.id
+        return model, context
+    return model, context
+
+def set_chosen_dataset(dataset: Dataset, uploaded_dataset, chosen_dataset_id, context: dict):
+    if dataset == None and len(uploaded_dataset) == 0 and type(chosen_dataset_id) == int:
+        dataset = Dataset.objects.filter(id=chosen_dataset_id).first()
+        context['chosen_dataset'] = dataset
+        context['chosen_dataset_id'] = dataset.id
+    return dataset, context
+
+def save_model_dataset(model: Model, dataset: Dataset, context: dict):
+    if model and dataset:
+        model_dataset = ModelDataset(model=model, dataset=dataset)
+        found_model_dataset = ModelDataset.objects.filter(model=model, dataset=dataset)
+        if found_model_dataset == None:
+            model_dataset.save()
+            context["ModelDataset_creation_success_message"] = 'Successfully created ModelDataset association.'
+        if found_model_dataset != None:
+            context["ModelDataset_creation_success_message"] = 'ModelDataset association already exists.'
+        return model_dataset, context
+    return None, context
+
+def set_model_dataset_options(chosen_model_id, model: Model, context: dict):
+    if type(chosen_model_id) == int:
+        filtered_model_dataset_list = ModelDataset.objects.filter(model = model) 
+        
+        dataset_ids = filtered_model_dataset_list.values_list('dataset__id', flat=True)
+        
+        model_dataset_options = Dataset.objects.filter(id__in=dataset_ids)
+        context['model_dataset_options'] = model_dataset_options
+
+        if len(model_dataset_options) == 0:
+            context['model_datasets_not_found'] = True
+        return model_dataset_options, context
+    return [], context
+
+def int_(str, default_val = None):
+    if str != 'None' and str != None and str != '':
+        return int(str)
+    if (str == 'None' or str == None or str == '') and default_val != None:
+        return default_val
+    return str
+    
 def process_model_options_view(request):
     if not request.user.is_authenticated:
         return redirect('/polls/login-view/')
     
     template_name = "polls/process_model_options.html"
-    dataset_list = Dataset.objects.filter(is_public=True).order_by("-created")
-    model_list = Model.objects.filter(is_public=True).order_by("-created")
-    private_dataset_list = Dataset.objects.filter(is_public=False, user=request.user).order_by("-created")
-    private_model_list = Model.objects.filter(is_public=False, user=request.user).order_by("-created")
+    dataset_list = get_dataset_list()
+    model_list = get_model_list()
+    private_dataset_list = get_user_dataset_list(request.user)
+    private_model_list = get_user_model_list(request.user)
+    model_dataset_options = []
 
     context = {
-        "public_dataset_list": dataset_list,
         "public_model_list": model_list,
-        'private_dataset_list': private_dataset_list,
+        "public_dataset_list": dataset_list,
         'private_model_list': private_model_list,
+        'private_dataset_list': private_dataset_list,
+        "public_model_list_length": len(model_list),
+        "public_dataset_list_length": len(dataset_list),
     }
 
-    if request.method != 'POST':
-        return render(request, template_name, context=context)
-
-    model_id = request.POST.get("model_id")
-    dataset_id = request.POST.get("dataset_id")
-    uploaded_dataset = request.FILES.getlist("form_dataset_folder")
-    uploaded_model = request.FILES.getlist("form_model_folder")
-    dataset_directories_str = request.POST.get("dataset_folder_directories")
-    model_directories_str = request.POST.get("model_folder_directories")
-    model_name = request.POST.get("model_name")
-    model_type = request.POST.get("model_type")
-    model_ispublic = request.POST.get("model_is_public")
-    
-    dataset_name = request.POST.get("dataset_name")
-    dataset_ispublic = request.POST.get("dataset_is_public")
-    
-    if model_directories_str:
-        model_directories_dict = ast.literal_eval(model_directories_str)
-
-    if dataset_directories_str:
-        dataset_directories_dict = ast.literal_eval(dataset_directories_str)
-
+    POSTget = request.POST.get
+    FILESget = request.FILES.getlist
+    context['Nper_page'] = int(POSTget('Nper_page', 2))
+    Nper_page = context['Nper_page']
     timestamp = now_Ymd_HMS()
 
-    print(' - uploaded_dataset - ', uploaded_dataset)
-    print(' - uploaded_model - ', uploaded_model)
-    print(' - dataset_directories - ', dataset_directories_str)
-    print(' - model_directories - ', model_directories_str)
-
-    if len(uploaded_model) != 0 and len(model_directories_dict) != 0 and model_name and model_type and model_ispublic: 
-        print(' - uploaded model ')
-        model_directory = save_folder(uploaded_model, model_directories_dict, request.user, timestamp, root_dir=ROOT_MODEL_DIR)
-        model = save_model_folder_info_to_database(model_name, request.user, model_type, model_directory, model_ispublic)
+    model = None
+    chosen_model_id = int_(POSTget("chosen_model_id"))
+    model_name = POSTget("model_name")
+    model_type = POSTget("model_type")
+    model_ispublic = POSTget("model_is_public")
+    model_directories_str = POSTget("model_folder_directories")
+    uploaded_model = FILESget("form_model_folder")    
+    model_page_action = POSTget('model_page_action', '')
+    model_page_num = int_(POSTget("model_page_num"), 0)
     
-    elif len(uploaded_model) == 0:
-        print(' - no uploaded model ')
-        model = Model.objects.filter(id=model_id).first()
-        context['chosen_model'] = model
+    dataset = None
+    chosen_dataset_id = int_(POSTget("chosen_dataset_id"))
+    dataset_name = POSTget("dataset_name")
+    dataset_ispublic = POSTget("dataset_is_public")
+    dataset_directories_str = POSTget("dataset_folder_directories")
+    uploaded_dataset = FILESget("form_dataset_folder")
+    dataset_page_action = POSTget('dataset_page_action', '')
+    dataset_page_num = int_(POSTget("dataset_page_num"), 0)
     
-    if len(uploaded_dataset) != 0 and len(dataset_directories_dict) != 0 and dataset_name and dataset_ispublic:
-        print(' - uploaded dataset ')
-        dataset_directory = save_folder(uploaded_dataset, dataset_directories_dict, request.user, timestamp, root_dir=ROOT_DATASET_DIR)
-        dataset = save_dataset_folder_info_to_database(dataset_name, request.user, dataset_directory, dataset_ispublic)
-
-    elif len(uploaded_dataset) == 0:
-        print(' - no uploaded dataset ')
-        dataset = Dataset.objects.filter(id=dataset_id).first()
-        context['chosen_dataset'] = dataset
+    private_model_page_action = POSTget('private_model_page_action', '')
+    private_model_page_num = int_(POSTget("private_model_page_num"), 0)
     
-    if model and dataset:
-        model_dataset = ModelDataset(model=model, dataset=dataset)
+    private_dataset_page_action = POSTget('private_dataset_page_action', '')
+    private_dataset_page_num = int_(POSTget("private_dataset_page_num"), 0)
     
-    model_dataset.save()
+    model_dataset_page_action = POSTget('model_dataset_page_action', '')
+    model_dataset_page_num = int_(POSTget("model_dataset_page_num"), 0)
+   
+    unselect_model_option = POSTget("unselect_model_option")
+    unselect_dataset_option = POSTget("unselect_dataset_option")
 
-    if model_id:
-        filtered_model_dataset_list = ModelDataset.objects.filter(model = model) 
-        
-        dataset_ids = filtered_model_dataset_list.values_list('dataset__id', flat=True)
-        
-        dataset_options = Dataset.objects.filter(id__in=dataset_ids)
-        context['dataset_options'] = dataset_options
+    start_process_action = POSTget("start_process_action")
+    choose_model_action = POSTget("choose_model_action")
+    
+    if unselect_model_option != None: chosen_model_id = None
+    if unselect_dataset_option != None: chosen_dataset_id = None
+    
+    (context['model_page_num'], 
+    context['public_model_list'],
+    context['public_model_page_previous_disabled'],
+    context['public_model_page_next_disabled']) = list_pagination(model_list, model_page_action, model_page_num, Nper_page) 
+    
+    (context['dataset_page_num'], 
+    context['public_dataset_list'],
+    context['public_dataset_page_previous_disabled'],
+    context['public_dataset_page_next_disabled']) = list_pagination(dataset_list, dataset_page_action, dataset_page_num, Nper_page)
+    
+    (context['private_model_page_num'], 
+    context['private_model_list'],
+    context['private_model_page_previous_disabled'],
+    context['private_model_page_next_disabled']) = list_pagination(private_model_list, private_model_page_action, private_model_page_num, Nper_page)
 
+    (context['private_dataset_page_num'], 
+    context['private_dataset_list'],
+    context['private_dataset_page_previous_disabled'],
+    context['private_dataset_page_next_disabled']) = list_pagination(private_dataset_list, private_dataset_page_action, private_dataset_page_num, Nper_page)
+    
+    if start_process_action == 'start_process_action' or choose_model_action == 'choose_model_action':
+        model = save_model_to_file_system_and_database(request.user, uploaded_model, model_directories_str, model_name, model_type, model_ispublic, timestamp)
+
+        dataset = save_dataset_to_file_system_and_database(request.user, uploaded_dataset, dataset_directories_str, dataset_name, dataset_ispublic, timestamp)
+
+    model, context = set_chosen_model(model, uploaded_model, chosen_model_id, context)
+
+    dataset, context = set_chosen_dataset(dataset, uploaded_dataset, chosen_dataset_id, context)
+    
+    if start_process_action == 'start_process_action' or choose_model_action == 'choose_model_action':
+        _, context = save_model_dataset(model, dataset, context)
+    
+    _, context = set_model_dataset_options(chosen_model_id, model, context) 
+    
+    (context['model_dataset_page_num'], 
+    context['model_dataset_list'],
+    context['model_dataset_page_previous_disabled'],
+    context['model_dataset_page_next_disabled']) = list_pagination(model_dataset_options, model_dataset_page_action, model_dataset_page_num, Nper_page)
+
+    context = {
+        "chosen_model_id": chosen_model_id,
+        "chosen_dataset_id": chosen_dataset_id,
+        **context
+    }
+    
     return render(request, template_name, context=context)
 
 def human_reinforced_feedback_view(request):
