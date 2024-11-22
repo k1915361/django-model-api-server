@@ -180,10 +180,15 @@ def login_message_view(request, context={"please_login_message": "Please login t
 def profile_view(request):
     base_html = get_base_html(request.user.is_authenticated)    
     
+    context = {
+        "username": request.user.username,
+        "email": request.user.email,
+    }   
+
     if not request.user.is_authenticated:
         return login_message_view(request)
 
-    return render(request, "polls/profile.html")
+    return render(request, "polls/profile.html", context)
 
 def register_view(request, context={}):
     template_name = "registration/register_view.html"
@@ -357,20 +362,23 @@ def get_home_directory(directories):
 def unzip_and_save(zipfile_dir, name, user, ispublic, timestamp):
     return
 
-def save_dataset_to_database(name: str, user: User, dataset_directory: str, ispublic):
-    dataset = Dataset(name=name, user=user, dataset_directory=dataset_directory, is_public=is_public_map_bool[ispublic])
-    dataset.save()
-    return
-
-def save_zip_file(zipfile, name: str, user: User, ispublic: str, timestamp: str, root_dir: str = ROOT_DATASET_DIR):
+def save_dataset_zip_file_and_to_dataset_database(zipfile, name: str, user: User, ispublic: str, timestamp: str, root_dir: str = ROOT_DATASET_DIR):
     save_filename = f"{user.id}-{timestamp}-{zipfile.name}"
     zipfile_dir = os.path.join(root_dir, save_filename)
 
     FileSystemStorage(location=root_dir).save(save_filename, zipfile) 
-    save_dataset_to_database(name, user, zipfile_dir, ispublic)
-    return zipfile_dir
+    dataset = save_dataset_to_database(name, user, zipfile_dir, ispublic)
+    return dataset
 
-def save_model_folder_info_to_database(name: str, user: User, model_type: str, model_directory: str, ispublic: str, original_model: Model = None, description: str = ""):
+def save_model_folder_info_to_database(
+        name: str
+        , user: User
+        , model_type: str
+        , model_directory: str
+        , ispublic: str
+        , original_model: Model = None
+        , description: str = ""
+    ) -> Model:
     model = Model(
         name=name, 
         user=user, 
@@ -383,12 +391,21 @@ def save_model_folder_info_to_database(name: str, user: User, model_type: str, m
     model.save()
     return model
 
-def save_dataset_folder_info_to_database(name: str, user: User, dataset_directory: str, ispublic: str):
+def save_dataset_to_database(
+        name: str
+        , user: User
+        , dataset_directory: str
+        , ispublic: str
+        , original_dataset: Dataset = None
+        , description: str = ""
+    ) -> Dataset:
     dataset = Dataset(
         name=name, 
         user=user, 
         dataset_directory=dataset_directory, 
         is_public=is_public_map_bool[ispublic],
+        original_dataset=original_dataset,
+        description=description,
     )
     dataset.save()
     return dataset
@@ -409,36 +426,64 @@ def save_folder(files: list, directories: dict, user: User, timestamp: str, root
     
     return dataset_dir
 
-def upload_folder(request, template_name = "polls/upload_folder.html", context = {}):
-    if request.method != "POST":
-        form = UploadDatasetForm()
-        return render(request, template_name, {"form": form} | context)
-    
-    form = UploadDatasetForm(request.POST, request.FILES)
-    ispublic = request.POST.get("is_public")
-    
-    name = request.POST.get("name")
-    directories_str = request.POST.get("directories")
-    
-    if directories_str:
-        directories_dict = ast.literal_eval(directories_str)
+def handle_dataset_zip_upload(request, name, ispublic, timestamp = None, ctx: dict = {}, namespace='', zipfile_namespace='zipfile') -> dict:
+    ispublic = request.POST.get(f"{namespace}_is_public")
+    name = request.POST.get(f"{namespace}_name")
 
-    zipfile_list = request.FILES.getlist('zipfile')
+    zipfile_list = request.FILES.getlist(f'{namespace}{zipfile_namespace}')
 
     if len(zipfile_list) != 0:
         zipfile = zipfile_list[0] 
 
-        timestamp = now_Ymd_HMS()
-        zipfile_dir = save_zip_file(zipfile, name, request.user, ispublic, timestamp)
+        if timestamp == None:
+            timestamp = now_Ymd_HMS()
+
+        dataset = save_dataset_zip_file_and_to_dataset_database(zipfile, name, request.user, ispublic, timestamp)
         
-        unzip_and_save(zipfile_dir, name, request.user, ispublic, timestamp)
+        unzip_and_save(dataset.dataset_directory, name, request.user, ispublic, timestamp)
+        
+        return dataset, ctx
+    return None, "", ctx
 
-    dataset_folder = request.FILES.getlist('file')
+def handle_dataset_folder_upload_with_form(request, ctx: dict = {}, namespace='', dataset_name='file', directories_str_name='directories'):
+    form = UploadDatasetForm(request.POST, request.FILES)
+    if form.is_valid():
+        return handle_dataset_folder_upload(request, ctx, namespace=namespace, dataset_name=dataset_name, directories_str_name=directories_str_name)
+    return None, ctx
 
-    if form.is_valid() and len(dataset_folder) != 0 and len(directories_dict) != 0:
+def handle_dataset_folder_upload(request, ctx: dict = {}, namespace='', dataset_name='file', directories_str_name='directories'):
+    ispublic = request.POST.get(f"{namespace}is_public")
+    name = request.POST.get(f"{namespace}name")
+    
+    directories_str = request.POST.get(f'{namespace}{directories_str_name}')
+
+    if directories_str:
+        directories_dict = ast.literal_eval(directories_str)
+
+    dataset_folder = request.FILES.getlist(f'{namespace}{dataset_name}')
+
+    if len(dataset_folder) != 0 and len(directories_dict) != 0:
         timestamp = now_Ymd_HMS()
         dataset_dir = save_folder(dataset_folder, directories_dict, request.user, timestamp, root_dir=ROOT_DATASET_DIR)
-        save_dataset_folder_info_to_database(name, request.user, dataset_dir, ispublic)
+        uploaded_dataset = save_dataset_to_database(name, request.user, dataset_dir, ispublic)
+        return uploaded_dataset, ctx
+    
+    return None, ctx
+
+def upload_folder(request, ctx: dict = {}, dataset_namespace='file', zipfile_namespace='zipfile', directories_str_namespace='directories') -> dict:
+    
+    handle_dataset_zip_upload(request, ctx=ctx, zipfile_namespace=zipfile_namespace)
+
+    handle_dataset_folder_upload_with_form(request, ctx=ctx, dataset_name=dataset_namespace, directories_str_name=directories_str_namespace)
+
+    return ctx
+
+def upload_folder_view(request, template_name = "polls/upload_folder.html", context = {}):
+    if request.method != "POST":
+        form = UploadDatasetForm()
+        return render(request, template_name, {"form": form} | context)
+    
+    upload_folder(request, context)
 
     return render(request, template_name, {"form": form} | context)
 
@@ -625,11 +670,11 @@ def search_dataset_name_view(request, context: dict = {}, template_name: str = "
     return render(request, template_name, context)
 
 def read_dataset_info_json(directory: str, filename: str = "dataset_info.json"):
-    file_path = os.path.join(ROOT_DATASET_DIR, directory or "1-20241107_192036-CS_dataset", filename)
+    file_path = os.path.join(ROOT_DATASET_DIR, directory, filename)
     try:
         with open(file_path, 'r', encoding='utf-8') as file:
             data = json.load(file)
-        return data.get('type', None)
+        return data
     except FileNotFoundError:
         print(f"Error: File not found at {file_path}")
     except json.JSONDecodeError:
@@ -637,6 +682,50 @@ def read_dataset_info_json(directory: str, filename: str = "dataset_info.json"):
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
     
+    return None
+
+def handle_chosen_dataset(request, ctx: dict, readme_to_markdown = False
+                          , SUBMIT_ID = 'submit_dataset_id'
+                          , CHOSEN_ID = 'chosen_dataset_id') -> dict:
+    
+    ctx[CHOSEN_ID] = request.POST.get(CHOSEN_ID)
+    ctx[SUBMIT_ID] = request.POST.get(SUBMIT_ID)
+
+    if ctx[SUBMIT_ID] != None:
+        ctx[CHOSEN_ID] = ctx[SUBMIT_ID]
+
+    if ctx[CHOSEN_ID] != None and ctx[CHOSEN_ID] != '':
+        chosen_dataset = Dataset.objects.filter(id=ctx[CHOSEN_ID]).first()
+        ctx['chosen_dataset'] = chosen_dataset
+        if readme_to_markdown:
+            readme_markdown = search_and_get_readme_markdown_by_directory(chosen_dataset.dataset_directory)
+            ctx['readme_markdown'] = readme_markdown
+        
+    return ctx
+
+def handle_chosen_model(request, ctx: dict, CHOSEN_ID = 'chosen_model_id') -> dict:
+    ctx[CHOSEN_ID] = request.POST.get(CHOSEN_ID)
+
+    if ctx[CHOSEN_ID] != None and ctx[CHOSEN_ID] != '':
+        ctx['chosen_model'] = Model.objects.filter(id=ctx[CHOSEN_ID]).first()
+        return ctx['chosen_model'], ctx
+        
+    return ctx
+
+def handle_dataset_upload_folder_personal_dataset_repo(submit_name, request, ctx: dict) -> dict:
+    ctx[submit_name] = request.POST.get(submit_name)
+    if ctx[submit_name] != None:
+        return handle_dataset_folder_upload(request, ctx=ctx, namespace='dataset_', dataset_name='folder')        
+
+    return None, ctx
+
+def handle_dataset_info_type(dataset):
+    chosen_dataset_folder_name = os.path.basename(os.path.normpath(dataset.dataset_directory))
+    dataset_info_json = read_dataset_info_json(chosen_dataset_folder_name)
+    if dataset_info_json != None:
+        chosen_dataset_type = dataset_info_json.get('type', None)
+        return chosen_dataset_type                
+
     return None
 
 def personal_dataset_repo_view(request):
@@ -656,30 +745,32 @@ def personal_dataset_repo_view(request):
         'dataset_list': dataset_list,
     }
 
-    POSTget = request.POST.get
-    context['Nper_page'] = int(POSTget('Nper_page', 2))    
-    context['chosen_dataset_id'] = POSTget('chosen_dataset_id')
-    context['submit_dataset_id'] = POSTget('submit_dataset_id')
-    context['upload_dataset'] = POSTget('upload_dataset')
+    context = list_pagination_with_context(request, dataset_list, 'dataset_list', context) 
 
-    if context['submit_dataset_id'] != None:
-        context['chosen_dataset_id'] = context['submit_dataset_id']
+    context = handle_chosen_dataset(request, context, readme_to_markdown=True)
 
-    context = list_pagination_v2(request, dataset_list, 'dataset_list', context) 
+    chosen_model, context = handle_chosen_model(request, context)
+    print('chosen_model')
+    print(chosen_model)
+    print(chosen_model.id)
+    print(chosen_model.name)
+    uploaded_dataset, context = handle_dataset_upload_folder_personal_dataset_repo('upload_dataset', request, context)
 
-    if context['chosen_dataset_id'] != None and context['chosen_dataset_id'] != '':
-        dataset = Dataset.objects.filter(id=context['chosen_dataset_id']).first()
-        readme_markdown = search_and_get_readme_markdown_by_directory(dataset.dataset_directory)
-        context['readme_markdown'] = readme_markdown
+    if uploaded_dataset:
+        print('uploaded_dataset')
+        print(uploaded_dataset.id)
+        print(uploaded_dataset.name)
 
-    if context['upload_dataset'] != None:
-        return upload_folder(request, template_name, context)
-        
     context = search_dataset_name(request, context)
 
-    q = read_dataset_info_json('')
-    print('read_dataset_info_json')
-    print(q)
+    context['uploaded_dataset'] = uploaded_dataset
+
+    _, context = save_model_dataset(chosen_model, uploaded_dataset, context)
+
+    chosen_dataset = context['chosen_dataset']
+    
+    chosen_dataset_type = handle_dataset_info_type(chosen_dataset)
+    context['chosen_dataset_type'] = chosen_dataset_type
 
     return render(request, template_name, context)
 
@@ -722,45 +813,52 @@ def get_queryset(self):
         :5
     ]
 
-def list_pagination_v2(request, list, namespace: str, context: dict):
+def list_pagination_with_context(request, list, namespace: str, ctx: dict) -> dict:
     """
         namespace: eg. 'public_model_list', 'private_dataset_list'
     """    
-    action = request.POST.get(f'{namespace}_page_action', '')
-    context[f'{namespace}_page_num'] = int_(request.POST.get(f'{namespace}_page_num'), 0)
-    Nper_page = context.get(f'{namespace}_Nper_page') or context.get('Nper_page', 2)
+        
+    NUM = f'{namespace}_page_num'
+    NUM_END = f'{namespace}_page_num_end'
+    PREV_DISABLED = f'{namespace}_page_previous_disabled'
+    NEXT_DISABLED = f'{namespace}_page_next_disabled'
+    LIST_VIEW = f'{namespace}_to_view'
+    N = len(list)
 
-    if "first" in action:
-        context[f'{namespace}_page_num'] = 0
-        context[f'{namespace}_page_previous_disabled'] = 'disabled'
-    if "previous" in action and context[f'{namespace}_page_num'] - Nper_page >= 0:
-        context[f'{namespace}_page_num'] -= Nper_page
-    if "previous" in action and context[f'{namespace}_page_num'] - Nper_page < 0:
-        context[f'{namespace}_page_num'] = 0
-    if "next" in action and context[f'{namespace}_page_num'] + Nper_page < len(list):
-        context[f'{namespace}_page_num'] += Nper_page
-    if context[f'{namespace}_page_num'] + Nper_page > len(list):
-        context[f'{namespace}_page_num_end'] = len(list)        
-    if "last" in action:
-        context[f'{namespace}_page_num'] = len(list) - Nper_page
-        context[f'{namespace}_page_next_disabled'] = 'disabled'
-    if context[f'{namespace}_page_num'] - Nper_page > 0:
-        context[f'{namespace}_page_previous_disabled'] = ''
-    if context[f'{namespace}_page_num'] == 0:
-        context[f'{namespace}_page_previous_disabled'] = 'disabled'
-    if context[f'{namespace}_page_num'] + Nper_page < len(list):
-        context[f'{namespace}_page_next_disabled'] = ''
-    if context[f'{namespace}_page_num'] + Nper_page >= len(list):
-        context[f'{namespace}_page_next_disabled'] = 'disabled'    
-    if context.get(f'{namespace}_page_num_end') == None:
-        context[f'{namespace}_page_num_end'] = context[f'{namespace}_page_num'] + Nper_page
-    if context[f'{namespace}_page_num'] > len(list):
-        context[f'{namespace}_page_num'] = len(list) - Nper_page
-        context[f'{namespace}_page_num_end'] = len(list)
+    ACTION = request.POST.get(f'{namespace}_page_action', '')
+    ctx[NUM] = int_(request.POST.get(NUM), 0)    
+    pageN = int(request.POST.get('Nper_page', 2))
+    
+    if "first" in ACTION:
+        ctx[NUM] = 0
+        ctx[PREV_DISABLED] = 'disabled'
+    if "previous" in ACTION and ctx[NUM] - pageN >= 0:
+        ctx[NUM] -= pageN
+    elif "previous" in ACTION and ctx[NUM] - pageN < 0:
+        ctx[NUM] = 0
+    if "next" in ACTION and ctx[NUM] + pageN < N:
+        ctx[NUM] += pageN
+    if "last" in ACTION:
+        ctx[NUM] = N - pageN
+        ctx[NEXT_DISABLED] = 'disabled'
+    
+    ctx[NUM_END] = ctx[NUM] + pageN
+    
+    if ctx[NUM] - pageN > 0:
+        ctx[PREV_DISABLED] = ''
+    if ctx[NUM] == 0:
+        ctx[PREV_DISABLED] = 'disabled'
+    if ctx[NUM] + pageN < N:
+        ctx[NEXT_DISABLED] = ''
+    if ctx[NUM] + pageN >= N:
+        ctx[NEXT_DISABLED] = 'disabled'
+    if ctx[NUM] + pageN > N:
+        ctx[NUM] = N - pageN
+        ctx[NUM_END] = N
+    
+    ctx[LIST_VIEW] = list[ctx[NUM]: ctx[NUM_END]]
 
-    context[f'{namespace}_to_view'] = list[context[f'{namespace}_page_num']: context[f'{namespace}_page_num_end']]
-
-    return context
+    return ctx
 
 def list_pagination(model_list, action: str, page_no: int, Nper_page: int):
     previous_disabled = ''
@@ -824,7 +922,7 @@ def save_dataset_to_file_system_and_database(user: User, uploaded_dataset, datas
             timestamp, 
             root_dir=ROOT_DATASET_DIR
         )
-        dataset = save_dataset_folder_info_to_database(
+        dataset = save_dataset_to_database(
             dataset_name, 
             user, 
             dataset_directory, 
@@ -849,12 +947,15 @@ def set_chosen_dataset(dataset: Dataset, uploaded_dataset, chosen_dataset_id, co
 
 def save_model_dataset(model: Model, dataset: Dataset, context: dict):
     if model and dataset:
+        found_model_dataset = ModelDataset.objects.filter(model=model, dataset=dataset).first()
+        print(found_model_dataset)
         model_dataset = ModelDataset(model=model, dataset=dataset)
-        found_model_dataset = ModelDataset.objects.filter(model=model, dataset=dataset)
         if found_model_dataset == None:
+            print('no found_model_dataset')
             model_dataset.save()
             context["ModelDataset_creation_success_message"] = 'Successfully created ModelDataset association.'
         if found_model_dataset != None:
+            print('yes found_model_dataset')
             context["ModelDataset_creation_success_message"] = 'ModelDataset association already exists.'
         return model_dataset, context
     return None, context

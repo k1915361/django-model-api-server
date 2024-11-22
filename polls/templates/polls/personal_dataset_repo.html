@@ -15,8 +15,9 @@
                 <div class="row gap-1 m-0">
                     
                     <input name="dataset_list_page_num" value="{{dataset_list_page_num}}" hidden>
-                    <input type="text" id="directories" name="directories" hidden/>
+                    <input type="text" id="dataset_directories" name="dataset_directories" hidden/>
                     <input name="chosen_dataset_id" value="{{ chosen_dataset_id }}" hidden>
+                    <input name="chosen_model_id" value="{{ chosen_model_id }}" hidden>
 
                     {% if dataset_list_to_view %}
                         <div>My Dataset:</div>
@@ -69,7 +70,28 @@
                 </div>
             </div>
             <div class="col p-2 outline-tertiary rounded border border-light-subtle">
-                <div>Dataset README</div>
+                <div name="submit_dataset_id" value="{{ dataset.id }}" class="p-0 bg-body-light border-dark-subtle border-bottom border-top text-smd text-start" >
+                    <div>Dataset README:</div>
+                    
+                    {% if chosen_dataset_type %}
+                        <div class="text-body-secondary text-sm">Type: {{ chosen_dataset_type }} </div>
+                    {% endif %}
+                        
+                    <span class="text-sm">{{ chosen_dataset.name }}</span> 
+                    <div>
+                        {% if chosen_dataset.original_dataset %}
+                        <span class="text-body-secondary text-sm">forked • </span>
+                        {% endif %}
+                        {% if chosen_dataset.is_public %}
+                        <span class="text-body-secondary text-sm">public • </span>
+                        {% endif %}
+                        {% if not chosen_dataset.is_public %}
+                        <span class="text-body-secondary text-sm">private • </span>
+                        {% endif %}
+                        <span class="text-body-secondary text-sm">{{ chosen_dataset.user }}</span> 
+                        <span class="text-body-secondary text-sm">• {{ chosen_dataset.updated|timesince|upto }} ago</span>
+                    </div>
+                </div>
                 {{ readme_markdown|safe }}
                 {% if not readme_markdown %}
                     Click a dataset to view their README content.
@@ -104,12 +126,12 @@
                 <label for="id_folder" class="form-label p-1">
                     Upload Dataset 
                     <span class="text-body-secondary fw-lighter">
-                        (Folder and Multiple Files)
+                        (Folder)
                     </span>
                 </label>
-                <input type="file" name="file" id="id_folder" class="form-control mb-1" webkitdirectory directory mozdirectory multiple>
+                <input type="file" name="dataset_folder" id="id_folder" class="form-control mb-1" webkitdirectory directory mozdirectory multiple>
 
-                <div class="pt-1">Optional - Link a model to a chosen dataset:</div>
+                <div class="pt-1">Optional - Link/Associate a model to the uploaded dataset:</div>
 
                 <div id="search_form_container" class="d-grid p-0 m-0 pb-2">
                     <form method="post">
@@ -167,10 +189,26 @@
                             {% endfor %}
                         </div>
                     </div>
+                    {% if chosen_model %}
+                    <div>
+                        <span class="text-sm"> Chosen Model: </span>
+                        <span class="text-sm">{{ chosen_model.name }}</span>
+                        <span class="text-body-secondary text-sm">{{ chosen_model.user.username }}</span> 
+                        <span class="text-body-secondary text-sm">• {{ chosen_model.updated|timesince|upto }} ago</span>
+                        {% if chosen_model.original_model != None and chosen_model.user == request.user %}
+                        <span class="text-body-secondary text-sm">• forked</span>
+                        {% endif %}
+                        {% if chosen_model.is_public %}
+                        <span class="text-body-secondary text-sm">• public</span>
+                        {% else %}
+                        <span class="text-body-secondary text-sm">• private</span>
+                        {% endif %}
+                    </div>
+                    {% endif %}
                 </div>
 
                 <div class="form-floating mb-1">
-                    <input type="text" name="name" id="id_name" class="form-control" placeholder="">
+                    <input type="text" name="dataset_name" id="id_name" class="form-control" placeholder="">
                     <label for="id_name">Dataset Name</label>
                 </div>
 
@@ -178,13 +216,13 @@
                     <fieldset>
                         <div class="form-check form-check-inline">
                             <label class="form-check-label" for="id_is_public_0">
-                                <input class="form-check-input" type="radio" name="is_public" value="1" id="id_is_public_0" checked>
+                                <input class="form-check-input" type="radio" name="dataset_is_public" value="1" id="id_is_public_0" checked>
                                 private
                             </label>
                         </div>
                         <div class="form-check form-check-inline">
                             <label class="form-check-label" for="id_is_public_1">
-                                <input class="form-check-input" type="radio" name="is_public" value="2" id="id_is_public_1">
+                                <input class="form-check-input" type="radio" name="dataset_is_public" value="2" id="id_is_public_1">
                                 public
                             </label>
                         </div>
@@ -193,16 +231,17 @@
                 
                 <button type="submit" name="upload_dataset" class="btn btn-light border-light-subtle shadow-sm">Upload</button>
             </div>
+
             <div class="col px-0 rounded border border-light-subtle">
                 <div class="row gap-1 m-1">
-                    <button class="col btn btn-outline-danger shadow-sm">
+                    <button type="submit" name="delete_dataset" class="col btn btn-outline-danger shadow-sm">
                         Delete Dataset
                     </button>
                 </div>
             </div>
             <div class="col px-0 rounded border border-light-subtle">
                 <div class="row gap-1 m-1">
-                    <button class="col btn btn-light border-light-subtle shadow-sm">
+                    <button type="submit" name="download_dataset" class="col btn btn-light border-light-subtle shadow-sm">
                         Download / Export
                     </button>
                 </div>
@@ -223,7 +262,7 @@
                 }
                 directories = JSON.stringify(directories);
                 
-                document.querySelector("#directories").value = directories
+                document.querySelector("#dataset_directories").value = directories
             });
         </script>
 
