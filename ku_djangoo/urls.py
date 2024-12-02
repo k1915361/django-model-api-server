@@ -18,7 +18,33 @@ from django.contrib import admin
 from django.urls import include, path
 from django.contrib.auth import views as auth_views
 
+from tutorial.quickstart import views as serializer_views
+
+from rest_framework import routers
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView, 
+    TokenRefreshView, 
+    TokenVerifyView
+)
+
+from polls import api
+
+router = routers.DefaultRouter()
+router.register(r'users', serializer_views.UserViewSet)
+router.register(r'groups', serializer_views.GroupViewSet)
+
 urlpatterns = [
+    path('', include(router.urls)),
+    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/token/verify/', TokenVerifyView.as_view(), name='token_verify'),
+    path('api/token/verify/protected-data/', api.ProtectedDataView.as_view(), name='ProtectedDataView'),
+    path('api/token/login/cookie/', api.CustomLoginTokenAccessView.as_view(), name='CustomLoginTokenAccessView'),
+    path('api/token/refresh/cookie/', api.CustomTokenRefreshView.as_view(), name='CustomTokenRefreshView'),
+    path('api/token/test/login/cookie/', api.TestUserInfoAndCookie.as_view(), name='TestUserInfoAndCookie'),
+    
+    path('api/me/username/', api.get_request_username, name=''),
+    path('api-auth/', include('rest_framework.urls', namespace='rest_framework')),
     path('polls/', include('polls.urls', namespace='polls')),
     path('admin/', admin.site.urls),
     path("accounts/", include("django.contrib.auth.urls")),
