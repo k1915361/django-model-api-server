@@ -39,6 +39,7 @@ is_public_map_bool = {
     '1': False, '2': True, 
     1: False, 2: True,
     False: '1', True: '2',
+    'false': False, 'true': True, 
 }
 
 is_public_map_label = {
@@ -137,10 +138,10 @@ class PrivateModelListPaginationView(forms.Form):
 def get_model__list(model, is_public: bool = True, order_by: str = "-created"):
     return model.objects.filter(is_public=is_public).order_by(order_by)
 
-def get_model_list(model = Model, is_public: bool = True, order_by: str = "-created"):
+def get_public_model_list(model = Model, is_public: bool = True, order_by: str = "-created"):
     return get_model__list(model, is_public=is_public, order_by=order_by)
 
-def get_dataset_list(model = Dataset, is_public: bool = True, order_by: str = "-created"):
+def get_public_dataset_list(model = Dataset, is_public: bool = True, order_by: str = "-created"):
     return get_model__list(model, is_public=is_public, order_by=order_by)
 
 def get_user_model__list(model, user: User, is_public: bool = True, order_by: str = "-created"):
@@ -247,7 +248,7 @@ def public_dataset_list_view(request, context={}):
     template_name = "polls/public_dataset_list_view.html"
     base_html = get_base_html(request.user.is_authenticated)
     
-    dataset_list = get_dataset_list()
+    dataset_list = get_public_dataset_list()
     paginator = Paginator(dataset_list, 2)
     page_number = request.GET.get("page")
     page_obj = paginator.get_page(page_number)
@@ -277,7 +278,7 @@ def public_model_list_view(request, context={}):
     template_name = "polls/public_model_list_view.html"
     base_html = get_base_html(request.user.is_authenticated)
     
-    model_list = get_model_list()
+    model_list = get_public_model_list()
     paginator = Paginator(model_list, 2)
     page_number = request.GET.get("page")
     page_obj = paginator.get_page(page_number)
@@ -307,12 +308,12 @@ def index_homepage_view(request):
     template_name = "polls/index.html"
     base_html = get_base_html(request.user.is_authenticated)
     
-    dataset_list = get_dataset_list()
+    dataset_list = get_public_dataset_list()
     paginator = Paginator(dataset_list, 2)
     dataset_page_number = request.GET.get("dataset_page")
     dataset_page_obj = paginator.get_page(dataset_page_number)
 
-    model_list = get_model_list()
+    model_list = get_public_model_list()
     model_paginator = Paginator(model_list, 2)
     model_page_number = request.GET.get("model_page")
     model_page_obj = model_paginator.get_page(model_page_number)
@@ -361,6 +362,71 @@ def get_home_directory(directories):
 
 def unzip_and_save(zipfile_dir, name, user, ispublic, timestamp):
     return
+
+import zipfile
+
+def handle_zip_file(file, extract_to: str):
+    """
+    Extracts a zip file uploaded as InMemoryUploadedFile to a given directory.
+    """
+    if not zipfile.is_zipfile(file):
+        raise ValueError("The file is not a valid zip file")
+
+    with zipfile.ZipFile(file) as zip_file:
+        zip_file.extractall(extract_to)
+
+    return f"Extracted to {extract_to}"
+
+def file_complete(file, temp_dir: str):
+    if not zipfile.is_zipfile(file):
+        raise ValueError("The file is not a valid zip file")
+
+    with zipfile.ZipFile(file) as zip_file:
+        zip_file.extractall(temp_dir)
+
+def save_model_zip_file_and_to_model_database(zipfile, name: str, user: User, model_type: str, ispublic: str, timestamp: str, original_model: Model = None, description = "", root_dir: str = ROOT_MODEL_DIR):
+    save_filename = f"{user.id}-{timestamp}-{zipfile.name}"
+    zipfile_dir = os.path.join(root_dir, save_filename)
+
+    FileSystemStorage(location=root_dir).save(save_filename, zipfile) 
+    model = save_model_folder_info_to_database(name, user, model_type, zipfile_dir, ispublic, original_model=original_model, description=description)
+    return model
+
+def is_zipfile_paths_safe(zip_file):
+    for file_name in zip_file.namelist():
+        if '..' in file_name or file_name.startswith('/'):
+            print("Unsafe file path in zip file")
+            return False
+    return True
+
+def save_and_extract_zip(file, name: str, user: User, ispublic: str, timestamp: str, root_dir: str = ROOT_MODEL_DIR):
+    """
+    Saves the uploaded zip file to disk and extracts it.
+    """
+    if not is_zipfile_paths_safe(file):
+        return "Zipfile contains unsafe path '..' / '/' "
+    
+    save_filename = f"{user.id}-{timestamp}-{zipfile.name}"
+    save_path = os.path.join(root_dir, save_filename)
+
+    folder_name = Path(zipfile.name).stem
+
+    save_folder_name = f"{user.id}-{timestamp}-{folder_name}"
+    extract_to = os.path.join(root_dir, save_folder_name)
+
+    User_Warning = "Are you sure you want to overwrite the existing directory? previous directory will be lost and not backed up."
+    os.makedirs(save_path, exist_ok=True) # exist_ok=True OVERWRITE
+    os.makedirs(extract_to, exist_ok=True)
+    zip_file_path = os.path.join(save_path, file.name)
+
+    with open(zip_file_path, 'wb+') as destination:
+        for chunk in file.chunks():
+            destination.write(chunk)
+
+    with zipfile.ZipFile(zip_file_path, 'r') as zip_file:
+        zip_file.extractall(extract_to)
+
+    return f"File saved and extracted to {extract_to}"
 
 def save_dataset_zip_file_and_to_dataset_database(zipfile, name: str, user: User, ispublic: str, timestamp: str, root_dir: str = ROOT_DATASET_DIR):
     save_filename = f"{user.id}-{timestamp}-{zipfile.name}"
@@ -519,7 +585,7 @@ def timestamp_humanize(timestamp: datetime) -> str:
 
 def model_list_view_to_fork(request):
     template_name = "polls/model_list_choose_one_to_fork.html"
-    public_model_list = get_model_list()
+    public_model_list = get_public_model_list()
     context = {'public_model_list': public_model_list}
 
     if request.method != "POST":
@@ -776,7 +842,7 @@ def personal_dataset_repo_view(request):
 
 def model_list_choose_one_to_relate_a_dataset(request):
     template_name = "polls/model_list_choose_one_to_relate_a_dataset.html" 
-    public_model_list = get_model_list()
+    public_model_list = get_public_model_list()
     context = {'public_model_list': public_model_list}
 
     if request.method != "POST":
@@ -785,7 +851,7 @@ def model_list_choose_one_to_relate_a_dataset(request):
     chosen_model_id = request.POST.get('model_id')
     context['chosen_model_id'] = chosen_model_id
     context['chosen_model'] = Model.objects.filter(id=chosen_model_id).first()
-    context['public_dataset_list'] = get_dataset_list()
+    context['public_dataset_list'] = get_public_dataset_list()
 
     return render(request, "polls/dataset_list_choose_to_relate_a_model.html" , context)
 
@@ -817,7 +883,7 @@ def list_pagination_with_context(request, list, namespace: str, ctx: dict) -> di
     """
         namespace: eg. 'public_model_list', 'private_dataset_list'
     """    
-        
+    
     NUM = f'{namespace}_page_num'
     NUM_END = f'{namespace}_page_num_end'
     PREV_DISABLED = f'{namespace}_page_previous_disabled'
@@ -930,16 +996,16 @@ def save_dataset_to_file_system_and_database(user: User, uploaded_dataset, datas
         )
         return dataset
 
-def set_chosen_model(model: Model, uploaded_model, chosen_model_id, context: dict):
-    if model == None and len(uploaded_model) == 0 and type(chosen_model_id) == int:
+def set_chosen_model(model: Model, chosen_model_id, context: dict):
+    if model == None and type(chosen_model_id) == int:
         model = Model.objects.filter(id=chosen_model_id).first()
         context['chosen_model'] = model
         context['chosen_model_id'] = model.id
         return model, context
     return model, context
 
-def set_chosen_dataset(dataset: Dataset, uploaded_dataset, chosen_dataset_id, context: dict):
-    if dataset == None and len(uploaded_dataset) == 0 and type(chosen_dataset_id) == int:
+def set_chosen_dataset(dataset: Dataset, chosen_dataset_id, context: dict):
+    if dataset == None and type(chosen_dataset_id) == int:
         dataset = Dataset.objects.filter(id=chosen_dataset_id).first()
         context['chosen_dataset'] = dataset
         context['chosen_dataset_id'] = dataset.id
@@ -960,18 +1026,18 @@ def save_model_dataset(model: Model, dataset: Dataset, context: dict):
         return model_dataset, context
     return None, context
 
-def set_model_dataset_options(chosen_model_id, model: Model, context: dict):
+def set_model_datasets(chosen_model_id, model: Model, context: dict, namespace='model_datasets'):
     if type(chosen_model_id) == int:
-        filtered_model_dataset_list = ModelDataset.objects.filter(model = model) 
+        filtered_model_datasets = ModelDataset.objects.filter(model = model) 
         
-        dataset_ids = filtered_model_dataset_list.values_list('dataset__id', flat=True)
+        dataset_ids = filtered_model_datasets.values_list('dataset__id', flat=True)
         
-        model_dataset_options = Dataset.objects.filter(id__in=dataset_ids)
-        context['model_dataset_options'] = model_dataset_options
+        model_datasets = Dataset.objects.filter(id__in=dataset_ids)
+        context[namespace] = model_datasets
 
-        if len(model_dataset_options) == 0:
+        if len(model_datasets) == 0:
             context['model_datasets_not_found'] = True
-        return model_dataset_options, context
+        return model_datasets, context
     return [], context
 
 def int_(str, default_val = None):
@@ -980,31 +1046,52 @@ def int_(str, default_val = None):
     if (str == 'None' or str == None or str == '') and default_val != None:
         return default_val
     return str
-    
+
+def delete_a_dataset_from_database_by_id(id: int|str):
+    Dataset.objects.filter(id=id).delete()
+    return
+
+def delete_a_dataset_from_file_storage(directory: str):
+    try:
+        shutil.rmtree(directory)
+        return True
+    except Exception as e:
+        print(f'failed to remove directory-tree of a dataset. Error: {e}')
+        return False
+
+def delete_a_dataset_from_database_and_file_storage(id):
+    dataset = Dataset.objects.filter(id=id)
+    isdeleted = delete_a_dataset_from_file_storage(dataset.dataset_directory)
+    if isdeleted:
+        dataset.delete()
+    return
+
 def process_model_options_view(request):
     if not request.user.is_authenticated:
         return redirect('/polls/login-view/')
-    
-    template_name = "polls/process_model_options.html"
-    dataset_list = get_dataset_list()
-    model_list = get_model_list()
-    private_dataset_list = get_user_dataset_list(request.user)
-    private_model_list = get_user_model_list(request.user)
-    model_dataset_options = []
 
+    template_name = "polls/process_model_options.html"
+    
+    datasets = Dataset.objects.filter(
+        Q(is_public=True) 
+        | Q(is_public=False, user=request.user)
+    ).order_by("-created")
+
+    models = Model.objects.filter(
+        Q(is_public=True) 
+        | Q(is_public=False, user=request.user)
+    ).order_by("-created")
+    
     context = {
-        "public_model_list": model_list,
-        "public_dataset_list": dataset_list,
-        'private_model_list': private_model_list,
-        'private_dataset_list': private_dataset_list,
-        "public_model_list_length": len(model_list),
-        "public_dataset_list_length": len(dataset_list),
+        "models": models,
+        "datasets": datasets,
+        "models_length": len(models),
+        "datasets_length": len(datasets),
     }
 
     POSTget = request.POST.get
     FILESget = request.FILES.getlist
     context['Nper_page'] = int(POSTget('Nper_page', 2))
-    Nper_page = context['Nper_page']
     timestamp = now_Ymd_HMS()
 
     model = None
@@ -1013,9 +1100,7 @@ def process_model_options_view(request):
     model_type = POSTget("model_type")
     model_ispublic = POSTget("model_is_public")
     model_directories_str = POSTget("model_folder_directories")
-    uploaded_model = FILESget("form_model_folder")    
-    model_page_action = POSTget('model_page_action', '')
-    model_page_num = int_(POSTget("model_page_num"), 0)
+    uploaded_model = FILESget("form_model_folder")
     
     dataset = None
     chosen_dataset_id = int_(POSTget("chosen_dataset_id"))
@@ -1023,18 +1108,7 @@ def process_model_options_view(request):
     dataset_ispublic = POSTget("dataset_is_public")
     dataset_directories_str = POSTget("dataset_folder_directories")
     uploaded_dataset = FILESget("form_dataset_folder")
-    dataset_page_action = POSTget('dataset_page_action', '')
-    dataset_page_num = int_(POSTget("dataset_page_num"), 0)
     
-    private_model_page_action = POSTget('private_model_page_action', '')
-    private_model_page_num = int_(POSTget("private_model_page_num"), 0)
-    
-    private_dataset_page_action = POSTget('private_dataset_page_action', '')
-    private_dataset_page_num = int_(POSTget("private_dataset_page_num"), 0)
-    
-    model_dataset_page_action = POSTget('model_dataset_page_action', '')
-    model_dataset_page_num = int_(POSTget("model_dataset_page_num"), 0)
-   
     unselect_model_option = POSTget("unselect_model_option")
     unselect_dataset_option = POSTget("unselect_dataset_option")
 
@@ -1043,45 +1117,31 @@ def process_model_options_view(request):
     
     if unselect_model_option != None: chosen_model_id = None
     if unselect_dataset_option != None: chosen_dataset_id = None
-    
-    (context['model_page_num'], 
-    context['public_model_list'],
-    context['public_model_page_previous_disabled'],
-    context['public_model_page_next_disabled']) = list_pagination(model_list, model_page_action, model_page_num, Nper_page) 
-    
-    (context['dataset_page_num'], 
-    context['public_dataset_list'],
-    context['public_dataset_page_previous_disabled'],
-    context['public_dataset_page_next_disabled']) = list_pagination(dataset_list, dataset_page_action, dataset_page_num, Nper_page)
-    
-    (context['private_model_page_num'], 
-    context['private_model_list'],
-    context['private_model_page_previous_disabled'],
-    context['private_model_page_next_disabled']) = list_pagination(private_model_list, private_model_page_action, private_model_page_num, Nper_page)
+        
+    context = list_pagination_with_context(request, models, "models", context)
 
-    (context['private_dataset_page_num'], 
-    context['private_dataset_list'],
-    context['private_dataset_page_previous_disabled'],
-    context['private_dataset_page_next_disabled']) = list_pagination(private_dataset_list, private_dataset_page_action, private_dataset_page_num, Nper_page)
+    context = list_pagination_with_context(request, datasets, "datasets", context)
+    context["datasets_length"] = len(datasets)
     
     if start_process_action == 'start_process_action' or choose_model_action == 'choose_model_action':
         model = save_model_to_file_system_and_database(request.user, uploaded_model, model_directories_str, model_name, model_type, model_ispublic, timestamp)
 
         dataset = save_dataset_to_file_system_and_database(request.user, uploaded_dataset, dataset_directories_str, dataset_name, dataset_ispublic, timestamp)
 
-    model, context = set_chosen_model(model, uploaded_model, chosen_model_id, context)
+    if len(uploaded_model) == 0:
+        model, context = set_chosen_model(model, chosen_model_id, context)
 
-    dataset, context = set_chosen_dataset(dataset, uploaded_dataset, chosen_dataset_id, context)
+    if len(uploaded_dataset) == 0:
+        dataset, context = set_chosen_dataset(dataset, chosen_dataset_id, context)
     
     if start_process_action == 'start_process_action' or choose_model_action == 'choose_model_action':
         _, context = save_model_dataset(model, dataset, context)
     
-    _, context = set_model_dataset_options(chosen_model_id, model, context) 
-    
-    (context['model_dataset_page_num'], 
-    context['model_dataset_list'],
-    context['model_dataset_page_previous_disabled'],
-    context['model_dataset_page_next_disabled']) = list_pagination(model_dataset_options, model_dataset_page_action, model_dataset_page_num, Nper_page)
+    model_datasets, context = set_model_datasets(chosen_model_id, model, context, namespace='model_datasets') 
+
+    if model_datasets != None and len(model_datasets) != 0:        
+        context = list_pagination_with_context(request, model_datasets, "datasets", context)
+        context["datasets_length"] = len(model_datasets)
 
     context = {
         "chosen_model_id": chosen_model_id,

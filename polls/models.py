@@ -38,12 +38,16 @@ class Model(models.Model):
     created = models.DateTimeField(default=timezone.now) 
     updated = models.DateTimeField(auto_now=True) # retrain finish date. successor creation date. 
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+
     # no_of_parameter = models.IntegerField(default=0) 
     # train_time = DurationField(default=0) # time took to train or retrain the model 
     
 class Dataset(models.Model):
     name = models.CharField(max_length=320)
-    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True) 
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    original_dataset = models.ForeignKey("self", on_delete=models.SET_NULL, blank=True, null=True)
     
     dataset_directory = models.CharField(max_length=2048)
     is_public = models.BooleanField(default=False)
@@ -57,6 +61,9 @@ class ModelDataset(models.Model):
     model = models.ForeignKey(Model, on_delete=models.CASCADE) 
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
     created = models.DateTimeField(default=timezone.now) 
+
+    class Meta:
+        unique_together = ('model', 'dataset',)
 
 class Image_Dataset(models.Model):
     name = models.CharField(max_length=320)
