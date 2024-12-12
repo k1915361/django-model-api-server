@@ -41,7 +41,6 @@ urlpatterns = [
     path("model-list-choose-one-to-relate-dataset/", views.model_list_choose_one_to_relate_a_dataset, name="model_list_choose_one_to_relate_dataset"),
     
     path("login-api/", api.login_api, name="login api"),
-    path("upload-dataset-api/", api.upload_dataset_api, name="upload dataset api"),
     path("models/", api.get_models_api, name="get models api"),    
     path("datasets/", api.get_datasets_api, name="get datasets api"),
     path('models_/', api.ModelList.as_view()),
@@ -52,7 +51,7 @@ urlpatterns = [
     path('datasets_/<int:pk>/', api.DatasetDetail.as_view()),
     path('test_list_random_values/', api.test_list_random_values),
     path('test_get_with_token_authorisation/', api.test_get_with_token_authorisation),
-    path('test_model_form_post/', api.test_model_form_post),
+    path('model_form_post/', api.model_form_post),    
 ]
 
 urlpatterns = format_suffix_patterns(urlpatterns)

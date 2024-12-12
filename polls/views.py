@@ -228,8 +228,8 @@ def login_retry_view(request, context={'retry_login_message': 'Login was incorre
     return login_view(request, context)
 
 def login_user(request):
-    username = request.POST["username"]
-    password = request.POST["password"]
+    username = request.POST.get("username")
+    password = request.POST.get("password")
     user = authenticate(request, username=username, password=password)
 
     if user is not None or request.user.is_authenticated:
@@ -365,12 +365,14 @@ def unzip_and_save(zipfile_dir, name, user, ispublic, timestamp):
 
 import zipfile
 
-def handle_zip_file(file, extract_to: str):
+def handle_extract_zip_file(file, extract_to: str):
     """
     Extracts a zip file uploaded as InMemoryUploadedFile to a given directory.
     """
     if not zipfile.is_zipfile(file):
         raise ValueError("The file is not a valid zip file")
+
+    os.makedirs(extract_to, exist_ok=False)
 
     with zipfile.ZipFile(file) as zip_file:
         zip_file.extractall(extract_to)
@@ -675,6 +677,16 @@ def upload_model(request):
         
     return render(request, "polls/upload_model.html", {"form": form})
 
+def iterate_folder_2levels(directory):
+    """
+    Iterate through the root directory and its immediate subdirectories.
+    """
+    for path in Path(directory).iterdir():
+        yield path 
+        if path.is_dir(): 
+            for sub_path in path.iterdir():
+                yield sub_path 
+
 def iterate_folder(directory):
     """
     non-recursive root-only iteration.
@@ -686,7 +698,7 @@ def is_text_file(path):
     return path.suffix.lower() in TEXT_FILE_EXTENSIONS
 
 def find_and_read_readme_text_file(directory: str):
-    for path in iterate_folder(directory):
+    for path in iterate_folder_2levels(directory):
         if ("readme" in path.name.lower() 
             and path.is_file()
             and is_text_file(path)
@@ -705,6 +717,8 @@ def find_and_read_readme_text_file(directory: str):
 
 def search_and_get_readme_markdown_by_directory(directory):
     readme_text = find_and_read_readme_text_file(directory)
+    if readme_text == None:
+        return 'No Readme file found.'
     readme_markdown = MARKDOWN_FENCED_CODE.convert(readme_text)
     return readme_markdown
 
@@ -760,7 +774,7 @@ def handle_chosen_dataset(request, ctx: dict, readme_to_markdown = False
     if ctx[SUBMIT_ID] != None:
         ctx[CHOSEN_ID] = ctx[SUBMIT_ID]
 
-    if ctx[CHOSEN_ID] != None and ctx[CHOSEN_ID] != '':
+    if ctx[CHOSEN_ID] != None and ctx[CHOSEN_ID] != '' and ctx[CHOSEN_ID] != 'None':
         chosen_dataset = Dataset.objects.filter(id=ctx[CHOSEN_ID]).first()
         ctx['chosen_dataset'] = chosen_dataset
         if readme_to_markdown:
@@ -771,12 +785,11 @@ def handle_chosen_dataset(request, ctx: dict, readme_to_markdown = False
 
 def handle_chosen_model(request, ctx: dict, CHOSEN_ID = 'chosen_model_id') -> dict:
     ctx[CHOSEN_ID] = request.POST.get(CHOSEN_ID)
-
-    if ctx[CHOSEN_ID] != None and ctx[CHOSEN_ID] != '':
+    if ctx[CHOSEN_ID] != None and ctx[CHOSEN_ID] != '' and ctx[CHOSEN_ID] != 'None':
         ctx['chosen_model'] = Model.objects.filter(id=ctx[CHOSEN_ID]).first()
         return ctx['chosen_model'], ctx
         
-    return ctx
+    return None, ctx
 
 def handle_dataset_upload_folder_personal_dataset_repo(submit_name, request, ctx: dict) -> dict:
     ctx[submit_name] = request.POST.get(submit_name)
@@ -816,10 +829,13 @@ def personal_dataset_repo_view(request):
     context = handle_chosen_dataset(request, context, readme_to_markdown=True)
 
     chosen_model, context = handle_chosen_model(request, context)
-    print('chosen_model')
+    
+    print(' chosen_model ')
     print(chosen_model)
-    print(chosen_model.id)
-    print(chosen_model.name)
+
+    if chosen_model != None:
+        print(chosen_model.id)
+        print(chosen_model.name)
     uploaded_dataset, context = handle_dataset_upload_folder_personal_dataset_repo('upload_dataset', request, context)
 
     if uploaded_dataset:
@@ -833,10 +849,11 @@ def personal_dataset_repo_view(request):
 
     _, context = save_model_dataset(chosen_model, uploaded_dataset, context)
 
-    chosen_dataset = context['chosen_dataset']
+    chosen_dataset = context.get('chosen_dataset')
     
-    chosen_dataset_type = handle_dataset_info_type(chosen_dataset)
-    context['chosen_dataset_type'] = chosen_dataset_type
+    if chosen_dataset:
+        chosen_dataset_type = handle_dataset_info_type(chosen_dataset)
+        context['chosen_dataset_type'] = chosen_dataset_type
 
     return render(request, template_name, context)
 

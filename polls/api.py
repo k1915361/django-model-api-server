@@ -1,47 +1,95 @@
+from django.db.models import Q
 from django.db.models import F
-from rest_framework import serializers
-from rest_framework.authtoken.models import Token
 from django.contrib.auth.models import User
-from .models import Dataset, Model, ModelDataset
 from django.core.files.storage import FileSystemStorage
+from django.core.paginator import Paginator
 from django.contrib.auth import authenticate, login, logout
 from django.views.decorators.csrf import csrf_exempt
-from django.http import JsonResponse
-from .views import save_model_zip_file_and_to_model_database, ROOT_TEMP, save_and_extract_zip, handle_zip_file
+from django.http import JsonResponse, FileResponse, HttpResponse
+from django.utils import timezone
+from rest_framework import serializers
+from rest_framework.authtoken.models import Token
+from rest_framework import generics
+from rest_framework import permissions
+from rest_framework import status
+from rest_framework.decorators import (
+    api_view, 
+    authentication_classes, 
+    permission_classes
+)
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
+from .models import Dataset, Model, ModelDataset
+from .views import (
+    ROOT_TEMP, 
+    ROOT_DATASET_DIR, 
+    ROOT_MODEL_DIR,
+    handle_extract_zip_file, 
+    save_model_folder_info_to_database, 
+    save_dataset_to_database, 
+    search_and_get_readme_markdown_by_directory
+)
 import json
 import uuid
 import os 
 import random
-from django.utils import timezone
+import datetime 
+import shutil
+import zipfile
 
-from rest_framework import generics
+from datetime import datetime as dttime
+
 from .serializers import UserSerializer
-
-from rest_framework import permissions
 from .permission import IsOwnerOrReadOnly
-
-from rest_framework import status
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-
-from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated
     
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
-
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import InvalidToken
+from ku_djangoo.settings import BASE_DIR
 
 LOGIN_EXPIRED_RESPONSE = JsonResponse(
-    {"detail": "Please re-login, your login has expired."},
+    {"message": "Please re-login, your login has expired."},
     status=status.HTTP_401_UNAUTHORIZED
 )
 
 INVALID_LOGIN_RESPONSE = JsonResponse(
-    {"detail": "Invalid credentials"}, 
+    {"message": "Invalid credentials"}, 
     status=status.HTTP_401_UNAUTHORIZED
 )
+
+ONLY_GET_REQUEST_RESPONSE = Response(
+    {"message": "Only GET request is available."}, 
+    status=status.HTTP_400_BAD_REQUEST
+)
+
+REQUIRED_ZIP_FILE_MISSING_RESPONSE = JsonResponse({
+    'message': 'The required zipfile is not uploaded.'
+})
+
+ONLY_ZIP_FILE_TYPE_RESPONSE = JsonResponse({
+    "error": "Unable to extract the zip file. Please ensure to give the .zip file type."}, 
+    status=400
+)
+
+SUCCESSFUL_ZIP_FILE_UPLOAD_RESPONSE = Response({
+    'message': 'Successfully uploaded your zip file and saved them into our records.',
+})
+
+NO_ACCESS_PERMISSION_RESPONSE = Response({
+    'success': False, 
+    'message': 'No access permission.'
+})
+NOT_FOUND_INVALID_ID_OR_DELETED_RECORD_RESPONSE = Response({
+    'success': False, 
+    'message': 'Not found - Invalid ID or deleted record.'
+})
+DATASET_NOT_FOUND_INVALID_ID_OR_DELETED_RECORD_RESPONSE = Response({
+    'success': False, 
+    'message': 'Dataset not found - Invalid ID or deleted record.'
+})
+
 
 class ModelSerializer(serializers.ModelSerializer):
     username = serializers.ReadOnlyField(source='user.username')
@@ -55,7 +103,13 @@ class DatasetSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Dataset
-        fields = ["id", "name", "updated", "is_public", "original_dataset", "username"]
+        fields = ["id", "name", "updated", "created", "is_public", "original_dataset", "username"]
+
+class UserSerializer_(serializers.ModelSerializer):
+
+    class Meta:
+        model = User
+        fields = ["id", "username", "email", "last_login", "date_joined", "url", "groups"]
 
 class ModelList(generics.ListCreateAPIView):
     queryset = Model.objects.all()
@@ -81,7 +135,7 @@ class ModelDetail(generics.RetrieveUpdateAPIView):
     queryset = Model.objects.all()
     serializer_class = ModelSerializer
 
-class DatasetDetail(generics.RetrieveUpdateAPIView):
+class DatasetDetail_(generics.RetrieveUpdateAPIView):
     permission_classes = [permissions.IsAuthenticatedOrReadOnly,
                       IsOwnerOrReadOnly]
     queryset = Dataset.objects.all()
@@ -104,7 +158,7 @@ class CustomTokenRefreshView(TokenRefreshView):
         refresh_token = request.COOKIES.get('refresh_token')
 
         if not refresh_token:
-            return Response({'detail': 'Refresh token missing'}, status=status.HTTP_400_BAD_REQUEST)
+            return LOGIN_EXPIRED_RESPONSE
         
         try:
             token = RefreshToken(refresh_token)
@@ -112,9 +166,6 @@ class CustomTokenRefreshView(TokenRefreshView):
             response = Response({
                 "success": True
                 , 'access_token': new_access_token
-                , 'username': request.user.username
-                , 'userid': request.user.id
-                , 'user': str(request.user)
             })
             response.set_cookie("access_token", new_access_token, httponly=True)
             return response
@@ -125,7 +176,7 @@ class CustomTokenRefreshView(TokenRefreshView):
             return Response({'detail': "Failed to refresh access token."}, 
                             status=status.HTTP_400_BAD_REQUEST)
 
-def identify_user_from_jwt_access_token(request):
+def identify_user_from_jwt_access_token_from_cookie(request):
     auth = JWTAuthentication()
     try:
         validated_token = auth.get_validated_token(request.COOKIES.get('access_token'))
@@ -143,13 +194,29 @@ def get_user_id_from_jwt_refresh_token(request):
     except:
         return None
 
-def get_user_from_jwt_refresh_token(request):
+def get_user_from_jwt_refresh_token_from_cookie(request):
     """
     Database querying, less efficient than function identify_user_from_jwt_access_token.
     Only recommended as second option.
     """
     user_id = get_user_id_from_jwt_refresh_token(request)
-    user = User.objects.get(id=user_id) 
+    
+    if user_id == None:
+        return None
+    
+    try:
+        user = User.objects.get(id=user_id) 
+    except:
+        return None
+
+    return user
+
+def identify_user_from_jwt_token_from_cookie(request):
+    user = identify_user_from_jwt_access_token_from_cookie(request)
+        
+    if user == None:
+        user = get_user_from_jwt_refresh_token_from_cookie(request)
+        
     return user
 
 class TestUserInfoAndCookie(APIView):
@@ -158,10 +225,7 @@ class TestUserInfoAndCookie(APIView):
 
     def post(self, request, *args, **kwargs):
         
-        user = identify_user_from_jwt_access_token(request)
-        
-        if user == None:
-            user = get_user_from_jwt_refresh_token(request)
+        user = identify_user_from_jwt_token_from_cookie(request)
 
         if user == None:
             return LOGIN_EXPIRED_RESPONSE
@@ -175,8 +239,6 @@ class TestUserInfoAndCookie(APIView):
         })
 
         return response
-import datetime 
-from datetime import datetime as dttime
 
 class CustomLoginTokenAccessView(APIView):
     
@@ -196,8 +258,6 @@ class CustomLoginTokenAccessView(APIView):
         refresh = RefreshToken.for_user(user)
         access_token = str(refresh.access_token)
         refresh_token = str(refresh)
-
-        print(' 1 ', request.user, request.user.is_authenticated)
 
         response = JsonResponse({
             "success": True,
@@ -219,6 +279,115 @@ class CustomLoginTokenAccessView(APIView):
         )
 
         return response
+
+def empty_default_authentication_classes_and_permission_classes(view_func):
+    @authentication_classes([]) 
+    @permission_classes([]) 
+    def wrapped_view(request, *args, **kwargs):
+        return view_func(request, *args, **kwargs)
+    return wrapped_view
+
+@api_view(['GET'])
+@authentication_classes([]) 
+@permission_classes([]) 
+def model_list_user(request, format=None):
+    if request.method == 'GET':
+        user = identify_user_from_jwt_token_from_cookie(request)
+
+        if user == None:
+            return Response(get_model_list().data)
+
+        models = Model.objects.filter(
+            (Q(is_public=False
+               , user=user) 
+            | Q(is_public=True)))[:10]
+        serializer = ModelSerializer(models, many=True)
+        return Response(serializer.data)
+    
+    return ONLY_GET_REQUEST_RESPONSE
+
+@api_view(['GET'])
+@authentication_classes([]) 
+@permission_classes([]) 
+def dataset_list_user(request, format=None):
+    if request.method == 'GET':
+        user = identify_user_from_jwt_token_from_cookie(request)
+
+        if user == None:
+            return Response(get_dataset_list().data)
+            
+        datasets = Dataset.objects.filter(
+            (Q(is_public=False
+               , user=user) 
+            | Q(is_public=True)))[:10]
+        serializer = DatasetSerializer(datasets, many=True)
+        return Response(serializer.data)
+    
+    return ONLY_GET_REQUEST_RESPONSE
+
+@api_view(['GET'])
+@empty_default_authentication_classes_and_permission_classes
+def user_profile(request, format=None):
+    if request.method == 'GET':
+        user = identify_user_from_jwt_token_from_cookie(request)
+        
+        if user == None: 
+            return LOGIN_EXPIRED_RESPONSE
+        
+        serializer = UserSerializer_(user, many=False, context={'request': request})
+        return Response(serializer.data)
+        
+    return ONLY_GET_REQUEST_RESPONSE
+
+@api_view(['GET'])
+@empty_default_authentication_classes_and_permission_classes
+def user_login_check(request, format=None):    
+    if request.method == 'GET':
+        user = identify_user_from_jwt_token_from_cookie(request)
+
+        if user == None:
+            return LOGIN_EXPIRED_RESPONSE
+
+        if user != None:
+            return Response({
+                "detail": "You are logged in.", 
+                "username": user.username, 
+                "user_is_authenticated": True,
+            })
+
+    return ONLY_GET_REQUEST_RESPONSE
+
+@api_view(['GET'])
+@empty_default_authentication_classes_and_permission_classes
+def user_private_models(request, format=None):
+    
+    if request.method == 'GET':        
+        user = identify_user_from_jwt_token_from_cookie(request)
+        
+        if user == None:
+            return LOGIN_EXPIRED_RESPONSE
+
+        models = Model.objects.filter(is_public=False, user=user)[:10]
+        serializer = ModelSerializer(models, many=True)
+        return Response(serializer.data)
+    
+    return ONLY_GET_REQUEST_RESPONSE        
+
+@api_view(['GET'])
+@empty_default_authentication_classes_and_permission_classes
+def user_private_datasets(request, format=None):
+    
+    if request.method == 'GET':        
+        user = identify_user_from_jwt_token_from_cookie(request)
+        
+        if user == None:
+            return LOGIN_EXPIRED_RESPONSE
+
+        datasets = Dataset.objects.filter(is_public=False, user=user)[:10]
+        serializer = DatasetSerializer(datasets, many=True)
+        return Response(serializer.data)
+    
+    return ONLY_GET_REQUEST_RESPONSE
 
 def get_json(request):
     return json.loads(request.body)
@@ -257,17 +426,12 @@ def login_api(request):
     password = data["password"]
     user = authenticate(request, username=username, password=password)
     
-    print(' --- 1: ', data)
-    print(' --- login api(): ', username, password, type(data))
-
     response_data = {
         "username": username, 
     }
 
-    print(' --- 2: ', response_data['token'].is_safe)    
     request.session._get_or_create_session_key()
-    print(' --- 3: ', request.session.session_key)
-
+    
     if user is not None or request.user.is_authenticated:
         login(request, user)
         response_data['is_authenticated'] = True
@@ -275,50 +439,6 @@ def login_api(request):
         response_data["token"] = token
         return JsonResponse(response_data)
     
-    return JsonResponse(response_data)
-
-@csrf_exempt
-def upload_dataset_api(request):
-    if request.method != 'POST':
-        return JsonResponse({'message': 'only POST is accepted'})
-    
-    body = request.body
-    # data = json.loads(body)
-    
-    print(' - session key ', request.session._get_or_create_session_key()) # rae4vk5d4ajdrd8x0gx6w7gemr4b5424
-    
-    headers = request.headers
-    # token = headers['token']
-
-    # if token == request.session['token']:
-        # print(' - request.session token matches the user token')
-
-    FILESget_list = request.FILES.getlist
-    POSTget = request.POST.get
-    timestamp = now_Ymd_HMS()
-    zip_bytes_file = FILESget_list('zip_bytes_file')
-    zipfile = FILESget_list('zipfile')[0]
-    name = POSTget("name")
-    ispublic = POSTget("ispublic")    
-
-    print(' zip_bytes_file')
-    print(zip_bytes_file)
-    print(' zipfile')
-    print(zipfile)
-
-    if len(zip_bytes_file) != 0:
-        save_zip_file(zip_bytes_file, timestamp) 
-
-    if len(zipfile) != 0:
-        save_zip_file(zipfile, timestamp)
-
-    # print(' --- login api(): ', name)
-
-    response_data = {
-        'upload_dataset_api function used': 'yes',
-        "token": uuid.uuid4(),
-    }
-
     return JsonResponse(response_data)
 
 @csrf_exempt
@@ -354,12 +474,14 @@ def get_datasets_api(request):
     return JsonResponse(response_data)
 
 @api_view(['GET', 'POST'])
-def model_list(request, format=None):
+@authentication_classes([]) 
+@permission_classes([]) 
+def models(request, format=None):
     """
     List all models, or create a new model.
     """
     if request.method == 'GET':
-        models = Model.objects.all()
+        models = Model.objects.all()[:10]
         serializer = ModelSerializer(models, many=True)
         return Response(serializer.data)
 
@@ -369,6 +491,26 @@ def model_list(request, format=None):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+@authentication_classes([]) 
+@permission_classes([]) 
+def dataset_list(request):
+    if request.method == 'GET':
+        datasets = Dataset.objects.all()[:10]
+        serializer = DatasetSerializer(datasets, many=True)
+        return Response(serializer.data)
+    return ONLY_GET_REQUEST_RESPONSE
+
+def get_model_list():
+    models = Model.objects.filter(is_public=True)[:10]
+    serializer = ModelSerializer(models, many=True)
+    return serializer
+
+def get_dataset_list():
+    datasets = Dataset.objects.filter(is_public=True)[:10]
+    serializer = DatasetSerializer(datasets, many=True)
+    return serializer
 
 @csrf_exempt
 def test_list_random_values(request, format=None):    
@@ -411,55 +553,431 @@ def check_is_zipfile(zipfile, ):
                 return True
     return False
 
-@api_view(['POST'])
-def test_model_form_post(request, format=None):
-        
-    name = request.POST.get('name')
-    model_type = request.POST.get('model_type')
-    is_public = request.POST.get('is_public')
-    description = request.POST.get('description')
-    model_zipfile = get_zipfile(request, 'model_zipfile')
-
-    print('- ', model_zipfile)
-    print('- ', name)
-    print('- ', model_type)
-    print('- ', is_public)
-    print('- request.FILES', request.FILES)
-    
-    is_zipfile = check_is_zipfile(model_zipfile)
-
-    if request.user.is_anonymous:
-        return JsonResponse({'message': 'Please login to upload a file.'})
-
-    if not is_zipfile:
-        return JsonResponse({'message': 'Only .zip / .7zip / .rar / .7z files are allowed'}, status=400)
-
+def get_unique_directory(filename: str, user_id, root_dir: str):
     timestamp = now_Ymd_HMS()
+    filename_, file_extension = path_split(filename)
+    unique_filename = f"{user_id}-{timestamp}-{filename_}"
+    save_directory = os.path.join(root_dir, unique_filename)
+    return save_directory, timestamp, unique_filename, filename_, file_extension
 
-    if model_zipfile != None:
-        model = save_model_zip_file_and_to_model_database(model_zipfile, name, request.user, model_type, is_public, timestamp, description=description, root_dir=ROOT_TEMP)
-    elif model_zipfile == None:
-        print('- zipfile is empty.')
+def get_unique_model_directory(filename: str, user_id, root_dir: str = ROOT_MODEL_DIR):
+    return get_unique_directory(filename, user_id, root_dir) 
 
-    if model_zipfile != None:
-        filename = f"{request.user.id}-{timestamp}-{model_zipfile.name}"
-        extract_to = os.path.join(ROOT_TEMP, filename)
+def get_unique_dataset_directory(filename: str, user_id, root_dir: str = ROOT_DATASET_DIR):
+    return get_unique_directory(filename, user_id, root_dir) 
+
+def get_dataset_form_data(request, namespace = '', zipfile_namespace = 'dataset_') -> tuple[str, str, str, any]:
+    name = request.POST.get(f'{namespace}name')
+    is_public = request.POST.get(f'{namespace}is_public')
+    description = request.POST.get(f'{namespace}description')
+    dataset_zipfile = get_zipfile(request, f'{zipfile_namespace}zipfile')
+    return name, is_public, description, dataset_zipfile
+
+def get_model_form_data(request, namespace = '', type_namespace = 'model_', zipfile_namespace = 'model_') -> tuple[str, str, str, str, any]:
+    name, is_public, description, model_zipfile = (
+        get_dataset_form_data(request, namespace, zipfile_namespace)
+    )
+    model_type = request.POST.get(f'{type_namespace}type')
+    return name, model_type, is_public, description, model_zipfile
+
+@api_view(['POST'])
+@authentication_classes([]) 
+@permission_classes([]) 
+def model_form_post(request, format=None):
+    user = identify_user_from_jwt_token_from_cookie(request)
+    if user == None:
+        return LOGIN_EXPIRED_RESPONSE
+
+    name, model_type, is_public, description, model_zipfile = get_model_form_data(request)
+    
+    if model_zipfile == None or len(model_zipfile) == 0:
+        return REQUIRED_ZIP_FILE_MISSING_RESPONSE
+
+    save_directory, _, _, _, _ = get_unique_model_directory(model_zipfile.name, user.id)
+
+    try:
+        handle_extract_zip_file(model_zipfile, save_directory)
+        save_model_folder_info_to_database(name, user, model_type, save_directory, is_public, description=description)
+    except ValueError:
+        return ONLY_ZIP_FILE_TYPE_RESPONSE
+
+    return SUCCESSFUL_ZIP_FILE_UPLOAD_RESPONSE
+
+def path_split(path: str) -> tuple[str, str]:
+    """
+    split filename and extension
+    """
+    return os.path.splitext(path)
+
+@api_view(['POST'])
+@authentication_classes([]) 
+@permission_classes([]) 
+def dataset_form_post(request, format=None):
+    user = identify_user_from_jwt_token_from_cookie(request)
+    if user == None:
+        return LOGIN_EXPIRED_RESPONSE
+
+    name, is_public, description, dataset_zipfile = get_dataset_form_data(request)
+    
+    if dataset_zipfile == None or len(dataset_zipfile) == 0:
+        return REQUIRED_ZIP_FILE_MISSING_RESPONSE
+    
+    save_directory, _, _, _, _ = get_unique_dataset_directory(dataset_zipfile.name, user.id)
+    
+    try:
+        handle_extract_zip_file(dataset_zipfile, save_directory)
+        save_dataset_to_database(name, user, save_directory, is_public, description=description)        
+    except ValueError:
+        return ONLY_ZIP_FILE_TYPE_RESPONSE
+
+    return SUCCESSFUL_ZIP_FILE_UPLOAD_RESPONSE
+
+def user_and_public_objects_pages(request, object=Model, objectSerializer=ModelSerializer, namespace='model_'):
+    user = identify_user_from_jwt_token_from_cookie(request)
+    objects = []
+    
+    if user == None:
+        objects = object.objects.filter(is_public=True)
+
+    if user != None:
+        objects = object.objects.filter(is_public_or_is_user_private(user))
+
+    serializer = objectSerializer(objects, many=True)
+    serializer_data = serializer.data
+
+    per_page = request.GET.get("per_page", 2)
+    per_page = request.GET.get(f"{namespace}per_page", per_page)
+    paginator = Paginator(serializer_data, per_page)
+    page_num = request.GET.get(f"{namespace}page")
+    page = paginator.get_page(page_num)
+
+    return Response({
+        'user': str(user),
+        'page_number': page.number,
+        'list': page.object_list,
+        'total_list_count': page.paginator.count,
+        'paginator_num_pages': page.paginator.num_pages,
+        'page_has_next': page.has_next(),
+        'page_has_previous': page.has_previous(),
+    })
+
+def get_page_range(current_page, total_pages, neighbors=2):
+    if total_pages <= 1:
+        return []
+
+    pages = []
+    pages.append(1)
+
+    if current_page > neighbors + 2:
+        pages.append("...")
+
+    start = max(2, current_page - neighbors)
+    end = min(total_pages - 1, current_page + neighbors)
+
+    pages.extend(range(start, end + 1))
+
+    if current_page < total_pages - neighbors - 1:
+        pages.append("...")
+
+    pages.append(total_pages)
+
+    return pages
+
+@api_view(['GET'])
+@authentication_classes([]) 
+@permission_classes([]) 
+def test_page_range(request):
+    queryset = Dataset.objects.filter(is_public=True)    
+    serializer = DatasetSerializer(queryset, many=True)
+    serializer_data = serializer.data
+    
+    page = request.GET.get('page', 1)
+    per_page = request.GET.get('per_page', 1)
+    paginator = Paginator(serializer_data, per_page)
+    current_page = paginator.get_page(page)
+
+    page_range = get_page_range(current_page.number, paginator.num_pages)
+    
+    return JsonResponse({
+        "list": current_page.object_list,
+        "current_page": current_page.number,
+        "page_range": page_range,
+        'total_list_count': paginator.count,
+        'num_pages': paginator.num_pages,
+        'page_has_next': current_page.has_next(),
+        'page_has_previous': current_page.has_previous(),
+    })
+
+@api_view(['GET'])
+@empty_default_authentication_classes_and_permission_classes
+def user_and_public_models_pages(request):
+    return user_and_public_objects_pages(request, object=Model, objectSerializer=ModelSerializer, namespace='model_')
+
+@api_view(['GET'])
+@empty_default_authentication_classes_and_permission_classes
+def user_and_public_datasets_pages(request):
+    return user_and_public_objects_pages(request, object=Dataset, objectSerializer=DatasetSerializer, namespace='dataset_')
+
+@api_view(['GET', 'POST'])
+@empty_default_authentication_classes_and_permission_classes
+def search_model_by_name(request):
+    user = identify_user_from_jwt_token_from_cookie(request)
+   
+    models = []
+    q = request.GET.get("query")
+    LIMIT = 5
+
+    if request.method == "POST":
+        q = request.POST.get("query", q)
+    
+    if q:
+        models = Model.objects.filter(
+            Q(name__icontains=q)
+            & is_public_or_is_user_private(user)
+        )[:LIMIT]
+
+    if not models:
+        models = Model.objects.all()[:LIMIT]
+
+    objectSerializer = ModelSerializer
+    objects = models
+
+    serializer = objectSerializer(objects, many=True)
+    serializer_data = serializer.data
+    
+    data = {
+        "search_model_query_value": q, 
+        "list": serializer_data
+    }
+    return Response(data)
+
+HTTP_METHOD_NAMES = [
+    "get",
+    "post",
+    "put",
+    "patch",
+    "delete",
+    "head",
+    "options",
+    "trace",
+]
+
+class DatasetDetail(APIView):
+    authentication_classes = [] 
+    permission_classes = []
+
+    def get(self, request, id):
+        user = identify_user_from_jwt_token_from_cookie(request)
 
         try:
-            handle_zip_file(model_zipfile, extract_to)
-            message = "Zip file saved and extracted successfully"
-        except ValueError as e:
-            return JsonResponse({"error": str(e)}, status=400)
+            dataset = Dataset.objects.get(id=id)
+            if dataset and not dataset.is_public and dataset.user != user:
+                return NO_ACCESS_PERMISSION_RESPONSE
+        except Dataset.DoesNotExist:
+            return NOT_FOUND_INVALID_ID_OR_DELETED_RECORD_RESPONSE
 
-    data = {
-        'response': 'success. response:',
-        'name': name,
-        'model_type': model_type,
-        'is_public': is_public,
-        'description': description,
-    }
+        serializer = DatasetSerializer(dataset)
+        serializer_data = serializer.data
+        readme_markdown = search_and_get_readme_markdown_by_directory(dataset.dataset_directory)
+        serializer_data['markdown'] =  readme_markdown
+        return Response(serializer_data)
+    
+    def delete(self, request, id):
+        user = identify_user_from_jwt_token_from_cookie(request)
+        
+        if user == None:
+            return Response({'success': False, 'message': 'Please login to delete your dataset.'})
 
-    return Response(data)
+        try:
+            dataset = Dataset.objects.get(id=id, user=user)            
+            success = remove_directory(dataset.dataset_directory)
+            if success:
+                dataset.delete()
+                return Response({'success': True, 'message': 'Delete Success.'})
+            if not success:
+                return Response({'success': False, 'message': 'Dataset directory not found.'})
+        except Dataset.DoesNotExist:
+            return Response({'success': False, 'message': 'Dataset not found.'})
+
+class ModelDetail(APIView):
+    authentication_classes = [] 
+    permission_classes = []
+
+    def get(self, request, id):
+        user = identify_user_from_jwt_token_from_cookie(request)
+
+        try:
+            model = Model.objects.get(id=id)
+            if model and not model.is_public and model.user != user:
+                return NO_ACCESS_PERMISSION_RESPONSE
+        except Model.DoesNotExist:
+            return NOT_FOUND_INVALID_ID_OR_DELETED_RECORD_RESPONSE
+        
+        serializer = ModelSerializer(model)
+        serializer_data = serializer.data
+        readme_markdown = search_and_get_readme_markdown_by_directory(model.model_directory)
+        serializer_data['markdown'] =  readme_markdown
+        return Response(serializer_data)
+    
+    def delete(self, request, id):
+        user = identify_user_from_jwt_token_from_cookie(request)
+        
+        if user == None:
+            return Response({'success': False, 'message': 'Please login to delete your model.'})
+
+        try:
+            model = Model.objects.get(id=id, user=user)            
+            success = remove_directory(model.model_directory)
+            if success:
+                model.delete()
+                return Response({'success': True, 'message': 'Delete Success.'})
+            if not success:
+                return Response({'success': False, 'message': 'Model directory not found.'})
+        except Model.DoesNotExist:
+            return Response({'success': False, 'message': 'Model not found.'})
+
+def remove_directory(dir):
+    if os.path.exists(dir) and os.path.isdir(dir):
+        shutil.rmtree(dir)
+        return True
+    return False
+
+def is_public_or_is_user_private(user):
+    return (
+        Q(is_public=True)
+        | Q(is_public=False, user=user)
+    )
+
+BASE_TMP_DIR = os.path.join(BASE_DIR, 'tmp')
+
+def make_zip_path(path: str) -> str:
+    zip_filename = f'{path_normpath_basename(path)}.zip'
+    zip_path = os.path.join(BASE_TMP_DIR, zip_filename)
+    return zip_filename, zip_path
+
+def download_zip(folder_path: str):    
+    _, zip_path = make_zip_path(folder_path)
+
+    if not any(os.scandir(folder_path)):
+        return "No files scanned/found to zip"
+    
+    with zipfile.ZipFile(zip_path, 'w') as zip_file:
+        for root, dirs, files in os.walk(folder_path):
+            for file in files:
+                file_path = os.path.join(root, file)
+                zip_file.write(file_path, os.path.relpath(file_path, folder_path))
+
+    return zip_path    
+
+def is_not_public_and_not_owner(obj, user):
+    return not obj.is_public and obj.user != user
+
+from typing import Callable
+
+def download_obj_zip(request, id, Obj, get_obj_directory: Callable):
+    user = identify_user_from_jwt_token_from_cookie(request)
+    try:
+        obj = Obj.objects.get(id=id)
+    except Obj.DoesNotExist:
+        return NOT_FOUND_INVALID_ID_OR_DELETED_RECORD_RESPONSE
+    
+    if not obj.is_public and obj.user != user:
+        return NO_ACCESS_PERMISSION_RESPONSE
+
+    folder_path = get_obj_directory(obj)
+    
+    zip_path = download_zip(folder_path)
+    
+    if zip_path == "No files scanned/found to zip":
+        return HttpResponse(zip_path, status=400)
+    
+    with open(zip_path, 'rb') as zip_file:        
+        zip_filename = f'{obj.name}.zip'
+        response = HttpResponse(zip_file.read(), content_type='application/zip')
+        response['Content-Disposition'] = f'attachment; filename="{zip_filename}"'
+        return response 
+
+    return response
+
+def get_model_directory(model: Model):
+    return model.model_directory
+
+def get_dataset_directory(dataset: Dataset):
+    return dataset.dataset_directory
+
+@api_view(['GET'])
+@empty_default_authentication_classes_and_permission_classes
+def download_dataset_zip(request, id):
+    return download_obj_zip(request, id, Dataset, get_dataset_directory)
+
+@api_view(['GET'])
+@empty_default_authentication_classes_and_permission_classes
+def download_model_zip(request, id):
+    return download_obj_zip(request, id, Model, get_model_directory)
+
+@api_view(['GET'])
+@empty_default_authentication_classes_and_permission_classes
+def test_download_dataset_zip(request):    
+    folder_path = "static/dataset/CS_dataset"
+    
+    zip_filename, _ = make_zip_path(folder_path)
+
+    zip_path = download_zip(folder_path)
+
+    if zip_path == "No files scanned/found to zip":
+        return HttpResponse(zip_path, status=400)
+    
+    with open(zip_path, 'rb') as zip_file:        
+        response = HttpResponse(zip_file.read(), content_type='application/zip')
+        response['Content-Disposition'] = f'attachment; filename="{zip_filename}"'
+        return response 
+    
+    return 
+
+def path_basename(path: str) -> str:
+    """
+    in:
+    /folderA/folderB/folderC/folderD/
+    
+    out:
+    folderD
+    """
+    return os.path.basename(path)
+
+def path_normpath(path: str) -> str:
+    """
+    to strip off any trailing slashes
+    """
+    return os.path.normpath(path)
+
+def path_normpath_basename(path: str) -> str:
+    return path_basename(path_normpath(path))
+
+def download_zip_stream(request, id):
+    """
+    Streaming for large size data
+    """
+    user = identify_user_from_jwt_token_from_cookie(request)
+    
+    try:
+        dataset = Dataset.objects.get(id=id)
+    except Dataset.DoesNotExist:
+        return DATASET_NOT_FOUND_INVALID_ID_OR_DELETED_RECORD_RESPONSE
+    
+    if not dataset.is_public and dataset.user != user:
+        return NO_ACCESS_PERMISSION_RESPONSE
+
+    zip_path = download_zip(dataset.dataset_directory)
+    response = FileResponse(open(zip_path, 'rb'), content_type='application/zip')
+    response['Content-Disposition'] = 'attachment; filename="files.zip"'
+    return response
+
+@api_view(['GET'])
+@empty_default_authentication_classes_and_permission_classes
+def test_api(request):
+    return Response({
+        'message': 'this is test API',
+    })
 
 @api_view(['GET', 'PUT', 'DELETE'])
 def model_detail(request, pk, format=None):
@@ -489,3 +1007,7 @@ def model_detail(request, pk, format=None):
 @api_view(['GET'])
 def get_request_username(request, pk, format=None):
     return JsonResponse({"username": request.user.username})
+
+def test_path_split_ext():
+    s = os.path.splitext("a/b/c.txt") 
+    assert ("a/b/c", "txt") == s 
