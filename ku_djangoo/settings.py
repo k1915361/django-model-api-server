@@ -47,14 +47,33 @@ REST_FRAMEWORK = {
 
 CORS_ALLOW_CREDENTIALS = True
 
+CORS_ALLOW_HEADERS = [
+    'Content-Disposition',
+    'content-type',
+]
+
+CORS_EXPOSE_HEADERS = [
+    'Content-Disposition', 
+]
+
 CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3002",
     "http://localhost:3002",
 ]
-
-CSRF_TRUSTED_ORIGINS = ["http://localhost:3002"]
+CSRF_COOKIE_DOMAIN = '127.0.0.1'
+CSRF_COOKIE_NAME = 'csrf_token'
+CSRF_COOKIE_PATH = "/"
+CSRF_HEADER_NAME = "HTTP_X_CSRFTOKEN"
+CSRF_USE_SESSIONS = True
+CSRF_TRUSTED_ORIGINS = [
+    'http://127.0.0.1:8000',
+    'https://127.0.0.1:8000',
+    'https://localhost:8000',
+    'http://localhost:8000',
+    "http://localhost:3002",
+]
 SESSION_COOKIE_SAMESITE = 'None'
-CSRF_COOKIE_SAMESITE = 'None'
+CSRF_COOKIE_SAMESITE = 'Lax'
 
 CORS_ALLOW_METHODS = [
     "GET",
@@ -69,8 +88,12 @@ SESSION_COOKIE_AGE = 43200  # 60×60×1 = 1 hour
 
 # Enable these three only when using HTTPS
 SECURE_SSL_REDIRECT = False
-SESSION_COOKIE_SECURE = False
-CSRF_COOKIE_SECURE = False
+# Enable these two below only when accessing admin website
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+
+CSRF_COOKIE_HTTPONLY = True
+SESSION_COOKIE_HTTPONLY = True
 
 # Application definition
 

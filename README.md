@@ -106,7 +106,8 @@ python manage.py createsuperuser
 # Password (again): apassword
 # Superuser created successfully.
 
-python manage.py runserver
+# python manage.py runserver
+python3.11 -m manage runserver
 ```
 
 ## Creating first login database record
@@ -504,8 +505,13 @@ sudo apt update
 python3 -V
 # 3.12.3
 
+sudo apt-get update
 sudo apt install python3-pip python3-venv
 sudo apt install python3-dev
+
+# for python3.11
+# sudo apt-get install python3.11-dev
+# sudo apt install python3.11-venv
 
 # check pip version
 python3 -m pip --version
@@ -531,7 +537,8 @@ cd ku_django/
 # initial migration for sessions and contenttypes
 python manage.py migrate
 
-python manage.py runserver
+# python manage.py runserver
+python3.11 -m manage runserver
 ```
 
 Throughout the whole document, the project aimed to use python 3.11 for stability, however development troubles were encountered. 
@@ -812,6 +819,248 @@ This enables temporarily storing user actions, options, page navigations (of mul
 Only non-sensitive data is stored in the HTML content at the client side. 
 
 This approach do not require caching or `session` caching at server side. 
+
+## Ensuring Token Table is Created
+
+Ensure that the authtoken app is listed in your INSTALLED_APPS:
+
+```py
+INSTALLED_APPS = [
+    ...,
+    'rest_framework',
+    'rest_framework.authtoken',
+]
+```
+
+Run migrations to create the table:
+
+```sh
+python manage.py migrate
+```
+
+In the Django Administrator page `http://localhost/admin/auth/user/`, the Token table will be seen under `AUTH TOKEN`.
+
+## Testing API
+
+```bash
+curl -u admin -H 'Accept: application/json; indent=4' http://127.0.0.1:8000/users/
+Enter host password for user 'admin':
+``` 
+
+Or directly through the browser, by going to the URL `http://127.0.0.1:8000/users/...`
+
+## Testing API Post (Put/Create)
+
+```bash
+http --form POST http://127.0.0.1:8000/polls/models_/ name="test model G" is_public="true" model_type="test type G"
+```
+
+```bash
+http POST http://127.0.0.1:8000/polls/models_/ name="test model G" is_public="true" model_type="test type G"
+
+{
+    "detail": "Authentication credentials were not provided."
+}
+
+```
+
+```bash
+http -a admin:password123 POST http://127.0.0.1:8000/polls/models_/ name="test model G" is_public="true" model_type="test type G"
+```
+
+Download a dataset zip file.
+
+```bash
+curl \
+  -X GET http://localhost:8000/api/dataset/download/test/ \
+  -o dataset.zip
+```
+
+## Fetching Model's Creator Username using Serializers
+
+```py
+class ModelSerializer(serializers.ModelSerializer):
+    username = serializers.ReadOnlyField(source='user.username')
+
+    class Meta:
+        model = Model
+        fields = ["id", "name", "updated", "is_public", "original_model", "username"]
+```
+
+## Installing Django cors headers
+
+`python3.11 -m pip install django-cors-headers`
+
+## Setting up JWT token
+
+<https://django-rest-framework-simplejwt.readthedocs.io/en/latest/getting_started.html>
+
+```sh
+python3.11 -m pip install cffi
+python3.11 -m pip install djangorestframework-simplejwt
+python3.11 -m pip install djangorestframework-simplejwt[crypto]
+```
+
+`settings.py`
+```py
+INSTALLED_APPS = [
+    ...
+    'rest_framework',
+    'rest_framework_simplejwt', 
+    ...
+]
+
+REST_FRAMEWORK = {
+    ...
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticated',  # Default permissions
+    ),
+    ...
+}
+```
+
+`urls.py`
+```py
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView, 
+    TokenRefreshView, 
+    TokenVerifyView
+)
+
+urlpatterns = [
+    ...
+    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/token/verify/', TokenVerifyView.as_view(), name='token_verify'),
+]
+```
+
+Usage and verify
+
+```sh
+curl \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "adminpass"}' \
+  http://127.0.0.1:8000/api/token/
+
+# return output
+{"refresh":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTczMjg5NzU5OCwiaWF0IjoxNzMyODExMTk4LCJqdGkiOiI4MzRhZTA3MzRlZTE0MGZkOTQ3YjAyOTM0NzFmMDJlZiIsInVzZXJfaWQiOjF9.NEmbsXNgft0rUalS4UT2yUz4Xa4I5y5FSWnFoClmAAI","access":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzMyODExNDk4LCJpYXQiOjE3MzI4MTExOTgsImp0aSI6IjE3MzNlMThhOGMwMzRhOGRhMzE2OWVmNzM0ZTU4MTg5IiwidXNlcl9pZCI6MX0.XwV95FYBn2WNUKtPExzL8dnJ8A9E__Rs7UGrNmNhgOo"}
+```
+
+```sh
+
+# from "access" token
+curl \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzMyODExNDk4LCJpYXQiOjE3MzI4MTExOTgsImp0aSI6IjE3MzNlMThhOGMwMzRhOGRhMzE2OWVmNzM0ZTU4MTg5IiwidXNlcl9pZCI6MX0.XwV95FYBn2WNUKtPExzL8dnJ8A9E__Rs7UGrNmNhgOo" \
+  http://127.0.0.1:8000/api/token/verify/protected-data/
+```
+
+When this short-lived access token expires, you can use the longer-lived refresh token to obtain another access token:
+
+```sh
+curl \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"refresh":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTczMjg5NzU5OCwiaWF0IjoxNzMyODExMTk4LCJqdGkiOiI4MzRhZTA3MzRlZTE0MGZkOTQ3YjAyOTM0NzFmMDJlZiIsInVzZXJfaWQiOjF9.NEmbsXNgft0rUalS4UT2yUz4Xa4I5y5FSWnFoClmAAI"}' \
+  http://localhost:8000/api/token/refresh/
+
+# return output
+{"access":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzMyODEyMTk5LCJpYXQiOjE3MzI4MTExOTgsImp0aSI6IjIxNjEwMzdmMmM5ZjRmOWI4Yzc2MDgyNTM2ODhlN2EwIiwidXNlcl9pZCI6MX0.sviz9yVyViSO_Sz7LU91nt-j1tBszBwj6bDlXgPDkfc"}
+
+
+```
+
+`polls/api.py`
+```py
+class CustomLoginTokenAccessView(APIView):
+    ...
+    def post(self, request, *args, **kwargs):
+        ...
+        response.set_cookie(
+            "access_token", access_token, httponly=True, secure=False
+        )
+```
+
+Only `secure` to `True` when using HTTPS (not HTTP) hosting.
+
+Testing `CustomTokenRefreshView` and `CustomLoginTokenAccessView`
+
+```sh
+curl \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -b cookie.txt -c cookie.txt \
+  -d '{"username": "admin", "password": "adminpass"}' \
+  http://localhost:8000/api/token/login/cookie/
+  
+# -c cookie.txt: Save cookies to a file 
+
+# return output
+{"success": true, "username": "admin"}
+# and cookie.txt created/updated in current directory
+
+# 
+curl \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -v -b cookie.txt -c cookie.txt \
+  -d '{}' \  
+  http://localhost:8000/api/token/refresh/cookie/
+
+# -b cookie.txt: Use the saved cookies
+# -v: debug - optional.
+```
+
+## Admin Forbidden - CSRF cookie not set
+
+<http://127.0.0.1:8000/admin/login/?next=/admin/>
+
+This happened suddenly where django settings and CSRF settings were left unchanged. Reason for its cause is unknown.
+
+Possible resolutions:
+- (Working solution) at `settings.py` set: `SESSION_COOKIE_SECURE = True` `CSRF_COOKIE_SECURE = True`
+- Access the admin page with `localhost` instead of `127.0.0.1`.
+- Disable/white-list all extensions on the admin page (or as last resort, disable/remove browser's extensions).
+- Remove browser cache and cookie on the admin page (or as last resort, remove browser's global cache and cookie).
+- Try on another browser.
+- Remove all .pyc python cache in the project and restart the server.
+
+Note for the working solution: Read and be aware of the comments in the `settings.py`:
+- for the development `HTTP` pages may not be accessible when making the admin pages accessible:
+
+```py
+# Enable these three only when using HTTPS
+SECURE_SSL_REDIRECT = False
+# Enable these two below only when accessing admin website
+SESSION_COOKIE_SECURE = True 
+CSRF_COOKIE_SECURE = True
+```
+
+Issue:
+```html
+Forbidden (403)
+
+CSRF verification failed. Request aborted.
+
+You are seeing this message because this site requires a CSRF cookie when submitting forms. This cookie is required for security reasons, to ensure that your browser is not being hijacked by third parties.
+
+If you have configured your browser to disable cookies, please re-enable them, at least for this site, or for “same-origin” requests.
+```
+
+## Resolving CORS missing allow headers
+
+`settings.py`
+
+```py
+CORS_ALLOW_HEADERS = [
+    ...
+    'content-type',
+]
+```
 
 ## Setting up ASGI
 
