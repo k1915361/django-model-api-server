@@ -30,6 +30,7 @@ def get_markdown_fenced_code(extensions=["fenced_code"]):
 
 MARKDOWN_FENCED_CODE = get_markdown_fenced_code()
 
+ASSET_USER_DIR = 'asset/user'
 ROOT_DATASET_DIR = 'asset/user/dataset/'
 ROOT_MODEL_DIR = 'asset/user/model/'
 ROOT_TEMP = 'asset/temp/test'

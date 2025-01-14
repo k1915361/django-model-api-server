@@ -3,6 +3,7 @@ import datetime
 from django.db import models
 from django.utils import timezone
 from django.contrib.auth.models import User
+from django.db.models import UniqueConstraint
 
 # ignore Question and Choice # they are templates to help structure models
 class Question(models.Model):
@@ -43,6 +44,11 @@ class Model(models.Model):
 
     # no_of_parameter = models.IntegerField(default=0) 
     # train_time = DurationField(default=0) # time took to train or retrain the model 
+
+    class Meta:
+        constraints = [
+            UniqueConstraint(fields=['name', 'user'], name='unique_model_name_user')
+        ]
     
 class Dataset(models.Model):
     name = models.CharField(max_length=320)
@@ -56,6 +62,11 @@ class Dataset(models.Model):
     
     created = models.DateTimeField(default=timezone.now) 
     updated = models.DateTimeField(auto_now=True) 
+
+    class Meta:
+        constraints = [
+            UniqueConstraint(fields=['name', 'user'], name='unique_dataset_name_user')
+        ]
 
 class ModelDataset(models.Model):
     model = models.ForeignKey(Model, on_delete=models.CASCADE) 

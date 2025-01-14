@@ -23,8 +23,10 @@ from rest_framework.permissions import IsAuthenticated
 from .models import Dataset, Model, ModelDataset
 from .views import (
     ROOT_TEMP, 
+    ASSET_USER_DIR,
     ROOT_DATASET_DIR, 
     ROOT_MODEL_DIR,
+    MARKDOWN_FENCED_CODE,
     handle_extract_zip_file, 
     save_model_folder_info_to_database, 
     save_dataset_to_database, 
@@ -37,7 +39,9 @@ import random
 import datetime 
 import shutil
 import zipfile
+import base64
 
+from typing import Callable
 from datetime import datetime as dttime
 
 from .serializers import UserSerializer
@@ -72,6 +76,14 @@ ONLY_ZIP_FILE_TYPE_RESPONSE = JsonResponse({
     "error": "Unable to extract the zip file. Please ensure to give the .zip file type."}, 
     status=400
 )
+NO_ACCESS_PERMISSION_JSON_RESPONSE = JsonResponse({
+    'success': False, 
+    'message': 'No access permission.'
+})
+NOT_FOUND_INVALID_QUERY_OR_DELETED_RECORD_JSON_RESPONSE = JsonResponse({
+    'success': False, 
+    'message': 'Not found - Invalid query or deleted record.'
+})
 
 SUCCESSFUL_ZIP_FILE_UPLOAD_RESPONSE = Response({
     'message': 'Successfully uploaded your zip file and saved them into our records.',
@@ -85,25 +97,34 @@ NOT_FOUND_INVALID_ID_OR_DELETED_RECORD_RESPONSE = Response({
     'success': False, 
     'message': 'Not found - Invalid ID or deleted record.'
 })
+NOT_FOUND_INVALID_QUERY_OR_DELETED_RECORD_RESPONSE = Response({
+    'success': False, 
+    'message': 'Not found - Invalid query or deleted record.'
+})
 DATASET_NOT_FOUND_INVALID_ID_OR_DELETED_RECORD_RESPONSE = Response({
     'success': False, 
     'message': 'Dataset not found - Invalid ID or deleted record.'
 })
 
+def get_model_directory(model: Model) -> str:
+    return model.model_directory
+
+def get_dataset_directory(dataset: Dataset) -> str:
+    return dataset.dataset_directory
 
 class ModelSerializer(serializers.ModelSerializer):
     username = serializers.ReadOnlyField(source='user.username')
 
     class Meta:
         model = Model
-        fields = ["id", "name", "updated", "is_public", "original_model", "username"]
+        fields = ["id", "name", "updated", "is_public", "original_model", "username", "model_directory"]
 
 class DatasetSerializer(serializers.ModelSerializer):
     username = serializers.ReadOnlyField(source='user.username')
 
     class Meta:
         model = Dataset
-        fields = ["id", "name", "updated", "created", "is_public", "original_dataset", "username"]
+        fields = ["id", "name", "updated", "created", "is_public", "original_dataset", "username", "dataset_directory"]
 
 class UserSerializer_(serializers.ModelSerializer):
 
@@ -709,6 +730,39 @@ def test_page_range(request):
     })
 
 @api_view(['GET'])
+@authentication_classes([]) 
+@permission_classes([]) 
+def datasets_page_range(request):
+    user = identify_user_from_jwt_token_from_cookie(request)
+    queryset = []
+
+    if user == None:
+        queryset = Dataset.objects.filter(is_public=True)
+    
+    if user != None:        
+        queryset = Dataset.objects.filter(is_public_or_is_user_private(user))
+        
+    serializer = DatasetSerializer(queryset, many=True)
+    serializer_data = serializer.data
+    
+    page = request.GET.get('page', 1)
+    per_page = request.GET.get('per_page', 1)
+    paginator = Paginator(serializer_data, per_page)
+    current_page = paginator.get_page(page)
+
+    page_range = get_page_range(current_page.number, paginator.num_pages)
+    
+    return JsonResponse({
+        "list": current_page.object_list,
+        "current_page": current_page.number,
+        'page_has_next': current_page.has_next(),
+        'page_has_previous': current_page.has_previous(),
+        "page_range": page_range,
+        'total_list_count': paginator.count,
+        'num_pages': paginator.num_pages,
+    })
+
+@api_view(['GET'])
 @empty_default_authentication_classes_and_permission_classes
 def user_and_public_models_pages(request):
     return user_and_public_objects_pages(request, object=Model, objectSerializer=ModelSerializer, namespace='model_')
@@ -872,7 +926,8 @@ def download_zip(folder_path: str):
 def is_not_public_and_not_owner(obj, user):
     return not obj.is_public and obj.user != user
 
-from typing import Callable
+def remove_temp_path(path: str):
+    os.remove(path)
 
 def download_obj_zip(request, id, Obj, get_obj_directory: Callable):
     user = identify_user_from_jwt_token_from_cookie(request)
@@ -895,15 +950,10 @@ def download_obj_zip(request, id, Obj, get_obj_directory: Callable):
         zip_filename = f'{obj.name}.zip'
         response = HttpResponse(zip_file.read(), content_type='application/zip')
         response['Content-Disposition'] = f'attachment; filename="{zip_filename}"'
+        remove_temp_path(zip_path)
         return response 
 
-    return response
 
-def get_model_directory(model: Model):
-    return model.model_directory
-
-def get_dataset_directory(dataset: Dataset):
-    return dataset.dataset_directory
 
 @api_view(['GET'])
 @empty_default_authentication_classes_and_permission_classes
@@ -1003,7 +1053,99 @@ def model_detail(request, pk, format=None):
     elif request.method == 'DELETE':
         model.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
-  
+
+def text_markdown_fenced_code_to_markdown(readme_text):
+    readme_markdown = MARKDOWN_FENCED_CODE.convert(readme_text)
+    return readme_markdown
+
+@api_view(['GET'])
+@empty_default_authentication_classes_and_permission_classes
+def get_dataset_image(request, user_id, datetime, folder_name, image_path):
+    dataset_directory = os.path.join(ROOT_DATASET_DIR, f"{user_id}-{datetime}-{folder_name}")
+    file_path_ = f"{dataset_directory}/{image_path}"
+    file_path = file_path_.rstrip('/')
+    user = identify_user_from_jwt_token_from_cookie(request)
+    content_type = ''
+    file_read_type = 'rb'
+
+    if (file_path.endswith('.txt')
+        or 
+        file_path.endswith('.yaml')
+        ):
+        content_type = 'text/html'
+        file_read_type = 'r'
+    if (file_path.endswith('.jpg') 
+        or file_path.endswith('.jpeg')
+        ):
+        content_type = 'image/jpeg'
+    if file_path.endswith('.png'):
+        content_type = 'image/png'
+
+    dataset = Dataset.objects.get(dataset_directory = dataset_directory)
+    data = None
+
+    if not dataset:
+        return HttpResponse(None, content_type=content_type)
+    
+    if dataset and not dataset.is_public and dataset.user != user:
+        return HttpResponse(None, content_type=content_type)
+    
+    if os.path.exists(file_path_) and os.path.isdir(file_path_):
+        return get_dataset_file_tree(request, user_id, datetime, folder_name, image_path)
+
+    if ((dataset and dataset.is_public) 
+        or 
+        (dataset and not dataset.is_public and dataset.user == user)
+        ):
+        with open(file_path, file_read_type) as file:
+            data = file.read()
+            if "readme" in file_path.lower() or file_path.endswith(".md"):
+                data = text_markdown_fenced_code_to_markdown(data)
+            elif content_type == 'text/html':
+                data =  f'<pre>{data}</pre>'
+
+    return HttpResponse(data, content_type=content_type)
+
+def get_dataset_file_tree(request, user_id, datetime, folder_name, path):
+    dataset_base_directory = os.path.join(ROOT_DATASET_DIR, f"{user_id}-{datetime}-{folder_name}")
+    dataset_directory = os.path.join(dataset_base_directory, path)
+    user = identify_user_from_jwt_token_from_cookie(request)
+    if not os.path.exists(dataset_directory) or not os.path.isdir(dataset_directory):
+        return JsonResponse({"error": "Invalid directory path"}, status=400)
+    
+    dataset = Dataset.objects.get(dataset_directory = dataset_base_directory)
+
+    if not dataset:
+        return NOT_FOUND_INVALID_QUERY_OR_DELETED_RECORD_JSON_RESPONSE
+    
+    if dataset and not dataset.is_public and dataset.user != user:
+        return NO_ACCESS_PERMISSION_JSON_RESPONSE
+
+    try:
+        files_and_dirs = os.listdir(dataset_directory)
+        tree = []
+        
+        for item in files_and_dirs:
+            full_path = os.path.join(dataset_directory, item)
+            tree.append({
+                "name": item,
+                "is_dir": os.path.isdir(full_path),
+                "size": os.path.getsize(full_path) if os.path.isfile(full_path) else None,
+            })
+        
+        return JsonResponse({"path": dataset_directory, "tree": tree}, status=200)
+
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+@api_view(['GET'])
+@empty_default_authentication_classes_and_permission_classes
+def respond_dataset_file_tree(request, user_id, datetime, folder_name, path=''):
+    """
+    API function to return a JSON object representing a tree of file paths limited to one level.
+    """
+    return get_dataset_file_tree(request, user_id, datetime, folder_name, path)
+
 @api_view(['GET'])
 def get_request_username(request, pk, format=None):
     return JsonResponse({"username": request.user.username})
