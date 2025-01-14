@@ -50,6 +50,7 @@ CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
     'Content-Disposition',
     'content-type',
+    'Connection',
 ]
 
 CORS_EXPOSE_HEADERS = [
@@ -110,6 +111,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "channels",
 ]
 
 MIDDLEWARE = [
@@ -202,6 +204,9 @@ STATIC_URL = 'static/'
 STATICFILES_DIRS = [
     BASE_DIR / 'static'
 ]
+
+STATIC_ROOT_DATASET = os.path.join(BASE_DIR, 'dataset')
+STATIC_ROOT_MODEL = os.path.join(BASE_DIR, 'model')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field

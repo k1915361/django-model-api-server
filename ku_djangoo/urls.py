@@ -28,6 +28,10 @@ from rest_framework_simplejwt.views import (
 )
 
 from polls import api
+from ku_djangoo import asgi
+
+from django.conf import settings
+from django.conf.urls.static import static
 
 router = routers.DefaultRouter()
 router.register(r'users', serializer_views.UserViewSet)
@@ -47,8 +51,8 @@ urlpatterns = [
     path('api/login/check/', api.user_login_check, name='user_login_check'),
     path('api/user/', api.user_profile, name='user_profile'),
     path('api/user/models/', api.user_private_models, name='user_private_models'),
-    path('api/user/datasets/', api.user_private_datasets, name='user_private_datasets'),
     path('api/user/models/page/', api.user_and_public_models_pages, name='user_and_public_models_pages'),
+    path('api/user/datasets/', api.user_private_datasets, name='user_private_datasets'),
     path('api/user/datasets/page/', api.user_and_public_datasets_pages, name='user_and_public_datasets_pages'),
     path('api/test/', api.test_api, name='test_api'),    
     path('api/model/search/', api.search_model_by_name, name='search_model_by_name'),    
@@ -58,9 +62,19 @@ urlpatterns = [
     path('api/dataset/download/<int:id>/', api.download_dataset_zip),
     path('api/dataset/download/test/', api.test_download_dataset_zip),
     path('api/datasets/page/test/', api.test_page_range),
+    path('api/datasets/page/', api.datasets_page_range),
     path('api/model/download/<int:id>/', api.download_model_zip),
     path('api/model/<int:id>/', api.ModelDetail.as_view()),
-
+    path('api/dataset/image/test-async-stream/', asgi.test_async_stream_view),
+    path('api/dataset/image/test-async-file-stream/', asgi.test_async_file_streaming),
+    path(
+        "api/asset/user/dataset/<int:user_id>-<str:datetime>-<str:folder_name>/<path:image_path>/",
+        api.get_dataset_image,
+        name="get_dataset_image_api",
+    ),
+    path('api/asset/user/dataset/<int:user_id>-<str:datetime>-<str:folder_name>/<path:path>/', api.respond_dataset_file_tree, name="get dataset file tree"),    
+    path('api/asset/user/dataset/<int:user_id>-<str:datetime>-<str:folder_name>/', api.respond_dataset_file_tree, name="get dataset file tree"),    
+    
     path('api/me/username/', api.get_request_username, name=''),
     path('api-auth/', include('rest_framework.urls', namespace='rest_framework')),
     path('polls/', include('polls.urls', namespace='polls')),
@@ -70,3 +84,9 @@ urlpatterns = [
     path("accounts/djangoo-login/", auth_views.LoginView.as_view(template_name="ku_djangoo/login_djangoo.html")),
     path("accounts/djangoo-profile/", auth_views.LoginView.as_view(template_name="ku_djangoo/login_djangoo.html")),
 ]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATICFILES_DIRS[0])
+else:
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATICFILES_DIRS[0])
+# Above is for Development. For Production, serve static files by a web server like Nginx for better performance and security.
