@@ -1,5 +1,8 @@
 # django-model-api-server
 
+This API server is developed with the Frontend application:  
+<https://github.com/k1915361/2024-Nov-frontend-nextjs>
+
 ## Setting up PostgreSQL
 
 ```sh
@@ -79,6 +82,8 @@ https://docs.djangoproject.com/en/5.1/intro/tutorial02/
 
 ```sh
 python manage.py makemigrations polls
+# or
+python3.11 -m manage makemigrations polls
 
 python manage.py sqlmigrate polls 0004
 python manage.py sqlmigrate polls 0005
@@ -90,6 +95,7 @@ python manage.py sqlmigrate polls 0010
 python manage.py sqlmigrate polls 0011
 python manage.py sqlmigrate polls 0012
 python manage.py sqlmigrate polls 0013
+python3.11 -m manage sqlmigrate polls 0014
 
 python manage.py migrate
 ```
@@ -1062,12 +1068,16 @@ CORS_ALLOW_HEADERS = [
 ]
 ```
 
+## Running ASGI server
+
+`uvicorn ku_djangoo.asgi:application --host 0.0.0.0 --port 8000 --reload`
+
 ## Setting up ASGI
 
 Core Libraries:
 
 - ASGI Server Options:
-  - Uvicorn: A high-performance ASGI server based on uvloop and httptools.
+  - Uvicorn: (Selected) A high-performance ASGI server based on uvloop and httptools.
   - Hypercorn: A flexible ASGI server that supports HTTP/1, HTTP/2, and WebSockets.   
   - Daphne: A production-ready ASGI server, often used with Django Channels.  
 
@@ -1081,6 +1091,64 @@ Considerations:
 - Database Drivers: Ensure that the database driver supports asynchronous operations. Check `asyncpg`, an asynchronous PostgreSQL driver.
 - Third-Party Libraries: Check the documentation to see if libraries have asynchronous support.
 - Deployment: Choose a deployment platform that supports ASGI, such as Heroku, AWS, or Google Cloud Platform. Configure your deployment environment to use an ASGI server like Uvicorn or Hypercorn.
+
+## Connecting to wireless Eduroam network on Linux
+
+Security configuration:
+Security: WPA & WPA2 Enterprise
+Authentication: Protected EAP (PEAP)
+Anonymous identity: ku70001@kingston.ac.uk
+Password: ...
+Domain: kingston.ac.uk
+[x] No CA certificate is required
+PEAP version: Automatic
+Inner authentication: MSCHAPv2
+username: ku70001@kingston.ac.uk
+Password: ...
+
+## Creating a mount directory
+
+Windows - file server
+Ubuntu/Linux - API server
+
+Either operating software may be used but setup will be different.
+
+Windows > Settings > Network & Internet > Advanced network settings > Advanced sharing settings:
+Option1. `All networks`: Have windows password setup and enable `Password-protected sharing`.
+Option2. Do not have windows password setup and enable `Public folder sharing` (not recommended).
+1. `Public networks`: enable `File and printer sharing`
+2. `Private networks`: enable `Network discovery` and `File and printer sharing`
+1. Alternative method: Windows Control Panel > System and Security > Windows Defender Firewall > Allowed applications > Enable Private and Public `File and Printer Sharing`
+
+Use Tailscale (mesh) VPN on both devices (Ubuntu guide below)
+
+1. Authenticate using the same account with same domain (Apple, Google, Microsoft, etc.)
+2. or, Authenticate with different account and use "Invite external Users" by email. 
+3. Tailwind will show IP addresses and a command to test `ping 100.78.7.23 -c 4`. Test ping from both devices.
+
+Windows. Create a folder (e.g. `remote-storage`) in any directory to share and share to `Everyone` or `User` or groups that needs access. 
+
+Ubuntu:
+```sh
+sudo apt-get install cifs-utils
+
+curl -fsSL https://tailscale.com/install.sh | sh
+
+sudo tailscale up
+
+# Optionally test on different networks e.g. Eduroam and The Cloud.
+ping 100.78.7.23 -c 4
+
+sudo mkdir /mnt/remote-storage
+# format
+sudo mount -t cifs //<remote-computer-IP>/<remote-storage> /mnt/<local-mount-storage> -o username=<windows-username>,password=<my-password>,vers=3.0
+# example
+sudo mount -t cifs //100.78.7.23/remote-storage /mnt/remote-storage -o username=user,password=mypass,vers=3.0
+
+# simple test
+cd /mnt/remote-storage
+sudo mkdir hello
+```
 
 ## Optional - Making a beginner sample model data
 
