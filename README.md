@@ -96,9 +96,28 @@ python manage.py sqlmigrate polls 0011
 python manage.py sqlmigrate polls 0012
 python manage.py sqlmigrate polls 0013
 python3.11 -m manage sqlmigrate polls 0014
+python3.11 -m manage sqlmigrate polls 0015
+python3.11 -m manage sqlmigrate polls 0016
+python3.11 -m manage sqlmigrate polls 0017
+python3.11 -m manage sqlmigrate polls 0018
+python3.11 -m manage sqlmigrate polls 0019
+python3.11 -m manage sqlmigrate polls 0020
 
 python manage.py migrate
+# or
+python3.11 -m manage migrate
 ```
+
+# Resolving: "could not create unique index"
+
+```bash
+$ python3.11 -m manage migrate
+...
+django.db.utils.IntegrityError: could not create unique index "unique_dataset_name_user"
+DETAIL:  Key (name, user_id)=(CS dataset, 1) is duplicated.
+```
+
+`python3.11 -m manage runserver` run this command and go to admin page `http://localhost:8000/admin/polls/dataset/`, rename `name` of dataset for unique names to avoid duplicates. As a second option, delete records with duplicate names. Then run the `migrate` command again and start server application as it is normally done.
 
 ## Creating an admin or superuser
 
@@ -991,7 +1010,7 @@ class CustomLoginTokenAccessView(APIView):
         )
 ```
 
-Only `secure` to `True` when using HTTPS (not HTTP) hosting.
+Only set `secure` to `True` when using HTTPS (not HTTP) hosting.
 
 Testing `CustomTokenRefreshView` and `CustomLoginTokenAccessView`
 
@@ -1092,21 +1111,172 @@ Considerations:
 - Third-Party Libraries: Check the documentation to see if libraries have asynchronous support.
 - Deployment: Choose a deployment platform that supports ASGI, such as Heroku, AWS, or Google Cloud Platform. Configure your deployment environment to use an ASGI server like Uvicorn or Hypercorn.
 
+## Installing Minio
+
+<https://github.com/minio/minio?tab=readme-ov-file>
+
+Note: without `sudo` command permission restrictions may arrise. 
+
+```sh
+wget https://dl.min.io/server/minio/release/linux-amd64/minio
+sudo chmod +x minio
+sudo ./minio server /data
+```
+
+Terminal server response:  
+Keep a note of the credentials.
+
+```sh
+API: http://10.144.127.231:9000  http://10.154.6.97:9000  http://100.75.219.92:9000  http://127.0.0.1:9000 
+   RootUser: m********* 
+   RootPass: m*********
+```
+
+Testing server-client connection;
+- Server is on wired university network (likely an Eduroam network).
+- Client device is on wireless Eduroam connection.
+
+```sh
+# Server:
+ifconfig
+enp2s0: ...
+        inet 10.144.127.231 ... # Your IP will be different
+
+# Client:
+# Browser:
+http://10.144.127.231:38963/login
+# Minio login webpage appears: Enter the previously shown credentials. 
+```
+## Creating Access and Secret Key with Minio
+
+<http://127.0.0.1:38963/access-keys/new-account>
+
+Access key:  
+a...
+
+Secret key:  
+b...
+
+## Resolving address already in use
+
+This may happen when exiting uvicorn server and restarting it.
+
+```sh
+uvicorn ku_djangoo.asgi:application --host 0.0.0.0 --port 8000 --reload
+# ERROR:    [Errno 98] Address already in use
+
+lsof -i :8000
+# COMMAND      PID USER   FD   TYPE  DEVICE SIZE/OFF NODE NAME
+# uvicorn   624372 user    3u  IPv4 4371939      0t0  TCP *:8000 (LISTEN)
+
+kill <PID>      # Sends a SIGTERM signal (graceful termination)
+kill -9 <PID>   # Sends a SIGKILL signal (forceful termination - use with caution)
+```
+
+## Testing APIs
+
+MinIO read/write API tests:
+
+```sh
+curl \
+  -X POST \
+  -F "data=@static/dataset/CS_dataset/test/images/ppe_0000_jpg.rf.c102a9a7c8dec01565a8f95ff295974c.jpg" \
+  http://localhost:8000/api/dataset/save-minio/test/
+
+curl -X GET http://localhost:8000/api/dataset/minio/ -o tmp/downloaded_file.jpg
+
+curl -X GET http://localhost:8000/api/dataset/minio/ -O -J
+
+# Optionally, open the URL link in browser.
+```
+
+MinIO zip upload API test:
+
+```sh
+curl \
+  -X POST \
+  -F "data=@static/dataset/CS_dataset.zip" \
+  http://localhost:8000/api/dataset/save-minio/test/
+
+curl -X GET http://localhost:8000/api/dataset/get-minio/test/zip/ -o tmp/downloaded.zip
+```
+
+MinIO file delete API test:
+
+```sh
+curl \
+  -X DELETE \
+  http://localhost:8000/api/dataset/minio/
+```
+
+MinIO file update API test:
+
+```sh
+curl \
+  -X PUT \
+  -F "data=@static/dataset/CS_dataset.zip" \  
+  http://localhost:8000/api/dataset/update-minio/test/
+```
+
+MinIO file list:
+
+```sh
+curl -X GET http://localhost:8000/api/dataset/minio/test/list/ -o tmp/downloaded.zip
+
+~/minio --version
+```
+
+Testing Log in and log out APIs (cookie JWT tokens):
+
+```sh
+curl \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -b cookie.txt -c cookie.txt \
+  -d '{"username": "abc", "password": "***"}' \
+  http://localhost:8000/api/token/login/cookie/
+
+# response output:
+# {"success": true, "username": "abc"}
+
+curl \
+  -X POST \
+  -b cookie.txt -c cookie.txt \
+  http://localhost:8000/api/token/check-login/cookie/
+
+# response output:
+# {"is_logged_in":true}
+
+curl \
+  -X POST \
+  -b cookie.txt -c cookie.txt \
+  http://localhost:8000/api/token/logout/cookie/
+
+# response output:
+# {"detail":"Successfully logged out.", "success": true}
+
+# Call check-login API again: 
+# response output:
+# {"is_logged_in":false}
+```
+
 ## Connecting to wireless Eduroam network on Linux
 
-Security configuration:
-Security: WPA & WPA2 Enterprise
-Authentication: Protected EAP (PEAP)
-Anonymous identity: ku70001@kingston.ac.uk
-Password: ...
-Domain: kingston.ac.uk
-[x] No CA certificate is required
-PEAP version: Automatic
-Inner authentication: MSCHAPv2
-username: ku70001@kingston.ac.uk
-Password: ...
+Security configuration:  
+Security: WPA & WPA2 Enterprise  
+Authentication: Protected EAP (PEAP)  
+Anonymous identity: ku70001@kingston.ac.uk  
+Password: ...  
+Domain: kingston.ac.uk  
+[x] No CA certificate is required  
+PEAP version: Automatic  
+Inner authentication: MSCHAPv2  
+username: ku70001@kingston.ac.uk  
+Password: ...  
 
 ## Creating a mount directory
+
+This section will no longer be necessary and will be replaced by section Installing Minio.
 
 Windows - file server
 Ubuntu/Linux - API server
@@ -1135,6 +1305,9 @@ sudo apt-get install cifs-utils
 curl -fsSL https://tailscale.com/install.sh | sh
 
 sudo tailscale up
+
+# Optional. Disconnect from Tailscale.
+# sudo tailscale down
 
 # Optionally test on different networks e.g. Eduroam and The Cloud.
 ping 100.78.7.23 -c 4

@@ -16,11 +16,6 @@ import os
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-ASSET_DIR = 'asset/'
-ROOT_DATASET_DIR = 'asset/dataset/'
-ROOT_MODEL_DIR = 'asset/model/'
-ROOT_TEMP = 'asset/temp/test'
-
 PUBLIC_DATASET_ROOT = os.path.join(BASE_DIR, 'asset/user/dataset/public/')
 PUBLIC_DATASET_DIR = '/public/'
 
@@ -28,19 +23,19 @@ PUBLIC_DATASET_DIR = '/public/'
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-r5ff0vy5@mn87v_svblz6p#1y546e(j6zg7r_r5tltov2)=0hi'
-MINIO_ACCESS_KEY = "wSEcMRT9rj2Jzcj7BBOp"
-MINIO_SECRET_KEY = "ypCUmae6Sx1fbQIcLubx5G4TqlyPQixKperd3juG"
-MINIO_BUCKET1_ADDR = "bucket1"
+SECRET_KEY = 'django-insecure-...'
+MINIO_ACCESS_KEY = "..."
+MINIO_SECRET_KEY = "..."
+MINIO_BUCKET1_ADDR = "..."
 
 MINIO_API_ADDRESSES = [
-    "http://10.144.127.231:9000",
-    "http://10.154.6.97:9000",
-    "http://100.75.219.92:9000",
-    "http://127.0.0.1:9000"
+    "http://0.0.0.0:0000",
+    "http://0.0.0.0:0000",
+    "http://0.0.0.0:0000",
+    "http://0.0.0.0:0000"
 ]
 
-MINIO_API_ADDR = "10.144.127.231:9000"
+MINIO_API_ADDR = "0.0.0.0:0000"
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -129,8 +124,6 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "channels",
-    "rest_framework_simplejwt",
-    "rest_framework_simplejwt.token_blacklist"
 ]
 
 MIDDLEWARE = [

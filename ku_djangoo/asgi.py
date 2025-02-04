@@ -25,6 +25,12 @@ from ku_djangoo.consumers import (
     , DActionResponseWebSocketConsumer
     , EActionResponseWebSocketConsumer
     , ProgressConsumer
+    , ProgressConsumerActionA
+    , ProgressConsumerActionB
+    , ProgressConsumerActionC
+    , ProgressConsumerActionD
+    , ProgressConsumerActionE
+    , ProgressConsumerCsv
 )
 from django.urls import path
 
@@ -42,8 +48,13 @@ application = ProtocolTypeRouter({
             path('api/dataset/image/test-async-file-stream-json/action-c', CActionResponseWebSocketConsumer.as_asgi()),
             path('api/dataset/image/test-async-file-stream-json/action-d', DActionResponseWebSocketConsumer.as_asgi()),
             path('api/dataset/image/test-async-file-stream-json/action-e', EActionResponseWebSocketConsumer.as_asgi()),
-            path('api/dataset/image/test-async-file-stream-json/action-progress', ProgressConsumer.as_asgi()),
-            
+            path('api/dataset/image/action-progress', ProgressConsumer.as_asgi()),
+            path('api/dataset/image/action-progress-action-a', ProgressConsumerActionA.as_asgi()),
+            path('api/dataset/image/action-progress-action-b', ProgressConsumerActionB.as_asgi()),
+            path('api/dataset/image/action-progress-action-c', ProgressConsumerActionC.as_asgi()),
+            path('api/dataset/image/action-progress-action-d', ProgressConsumerActionD.as_asgi()),
+            path('api/dataset/image/action-progress-action-e', ProgressConsumerActionE.as_asgi()),
+            path('api/dataset/image/action-progress-csv', ProgressConsumerCsv.as_asgi()),
         ])
     ),
 })
