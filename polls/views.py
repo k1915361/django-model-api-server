@@ -24,16 +24,14 @@ import shutil
 from pathlib import Path
 import markdown
 import json
+from ku_djangoo.settings import ROOT_DATASET_DIR, ROOT_MODEL_DIR
+from ku_djangoo.utils import get_unique_model_directory, get_unique_dataset_directory
 
 def get_markdown_fenced_code(extensions=["fenced_code"]):
     return markdown.Markdown(extensions=extensions)
 
 MARKDOWN_FENCED_CODE = get_markdown_fenced_code()
 
-ASSET_USER_DIR = 'asset/user'
-ROOT_DATASET_DIR = 'asset/user/dataset/'
-ROOT_MODEL_DIR = 'asset/user/model/'
-ROOT_TEMP = 'asset/temp/test'
 TEXT_FILE_EXTENSIONS = {".txt", ".md", ".rst", ".html", ""}
 
 is_public_map_bool = {
@@ -200,9 +198,8 @@ def register_retry_view(request, context={'retry_register_message': 'Your userna
     return register_view(request, context)
 
 def make_user_directories(user_id: str):
-    for root_directory in [ROOT_DATASET_DIR, ROOT_MODEL_DIR]:
-        for publicity in ['private', 'public']:
-            os.makedirs(os.path.join(root_directory, publicity, user_id), exist_ok=True)
+    for root_directory in [ROOT_DATASET_DIR, ROOT_MODEL_DIR]:        
+        os.makedirs(os.path.join(root_directory, user_id), exist_ok=True)
 
 def register(request):
     username = request.POST["username"]
@@ -361,8 +358,47 @@ def get_home_directory(directories):
                 return directory.split(sep)[0]
     return ''
 
-def unzip_and_save(zipfile_dir, name, user, ispublic, timestamp):
-    return
+def unzip_and_save(zipfile_path, name, user, ispublic, timestamp, remove_zip=True, cleanup=True):
+
+    zipfile_base_name = os.path.splitext(os.path.basename(zipfile_path))[0]
+    
+    zipfile_dir = os.path.dirname(zipfile_path)
+
+    extract_dir = os.path.join(zipfile_dir, zipfile_base_name + "_extracted")
+    final_directory = os.path.join(zipfile_dir, zipfile_base_name) 
+
+    try:
+        os.makedirs(extract_dir, exist_ok=True)
+
+        with zipfile.ZipFile(zipfile_path, 'r') as zip_file:
+            zip_file.extractall(extract_dir)
+
+        if remove_zip:
+            os.remove(zipfile_path)
+            print(f"Removed zip file: {zipfile_path}")
+
+        if cleanup:
+            if os.path.exists(final_directory):
+                shutil.rmtree(final_directory) 
+            os.rename(extract_dir, final_directory)
+            print(f"Renamed {extract_dir} to {final_directory}")
+            return final_directory
+        else:
+            print(f"Extraction complete at {extract_dir}. Cleanup skipped.")
+            return extract_dir
+
+        print(f"Successfully extracted {zipfile_path} to {extract_dir}")
+        return True
+
+    except FileNotFoundError:
+        print(f"Error: Zip file not found: {zipfile_path}")
+        return False
+    except zipfile.BadZipFile:
+        print(f"Error: Invalid zip file: {zipfile_path}")
+        return False
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        return False
 
 import zipfile
 
@@ -387,11 +423,17 @@ def file_complete(file, temp_dir: str):
     with zipfile.ZipFile(file) as zip_file:
         zip_file.extractall(temp_dir)
 
-def save_model_zip_file_and_to_model_database(zipfile, name: str, user: User, model_type: str, ispublic: str, timestamp: str, original_model: Model = None, description = "", root_dir: str = ROOT_MODEL_DIR):
-    save_filename = f"{user.id}-{timestamp}-{zipfile.name}"
-    zipfile_dir = os.path.join(root_dir, save_filename)
+def save_zip_file(root_dir: str, userid: str, name: str, zipfile):
+    location_dir = os.path.join(root_dir, userid)
+    zipfile_dir = os.path.join(location_dir, name)
 
-    FileSystemStorage(location=root_dir).save(save_filename, zipfile) 
+    FileSystemStorage(location=location_dir).save(name, zipfile) 
+    
+    return zipfile_dir, location_dir
+
+def save_model_zip_file_and_to_model_database(zipfile, name: str, user: User, model_type: str, ispublic: str, original_model: Model = None, description = "", root_dir: str = ROOT_MODEL_DIR):
+    zipfile_dir, _ = save_zip_file(root_dir, str(user.id), name, zipfile)
+
     model = save_model_folder_info_to_database(name, user, model_type, zipfile_dir, ispublic, original_model=original_model, description=description)
     return model
 
@@ -409,33 +451,25 @@ def save_and_extract_zip(file, name: str, user: User, ispublic: str, timestamp: 
     if not is_zipfile_paths_safe(file):
         return "Zipfile contains unsafe path '..' / '/' "
     
-    save_filename = f"{user.id}-{timestamp}-{zipfile.name}"
-    save_path = os.path.join(root_dir, save_filename)
+    save_zip_path = get_unique_model_directory(root_dir, str(user.id), f'{name}_zip')
+    extract_zip_to = os.path.join(root_dir, user.id, name)
 
-    folder_name = Path(zipfile.name).stem
-
-    save_folder_name = f"{user.id}-{timestamp}-{folder_name}"
-    extract_to = os.path.join(root_dir, save_folder_name)
-
-    User_Warning = "Are you sure you want to overwrite the existing directory? previous directory will be lost and not backed up."
-    os.makedirs(save_path, exist_ok=True) # exist_ok=True OVERWRITE
-    os.makedirs(extract_to, exist_ok=True)
-    zip_file_path = os.path.join(save_path, file.name)
+    os.makedirs(save_zip_path, exist_ok=True) # exist_ok=True OVERWRITE
+    os.makedirs(extract_zip_to, exist_ok=True)
+    zip_file_path = os.path.join(save_zip_path, file.name)
 
     with open(zip_file_path, 'wb+') as destination:
         for chunk in file.chunks():
             destination.write(chunk)
 
     with zipfile.ZipFile(zip_file_path, 'r') as zip_file:
-        zip_file.extractall(extract_to)
+        zip_file.extractall(extract_zip_to)
 
-    return f"File saved and extracted to {extract_to}"
+    return f"File saved and extracted to {extract_zip_to}"
 
-def save_dataset_zip_file_and_to_dataset_database(zipfile, name: str, user: User, ispublic: str, timestamp: str, root_dir: str = ROOT_DATASET_DIR):
-    save_filename = f"{user.id}-{timestamp}-{zipfile.name}"
-    zipfile_dir = os.path.join(root_dir, save_filename)
+def save_dataset_zip_file_and_to_dataset_database(zipfile, name: str, user: User, ispublic: str, root_dir: str = ROOT_DATASET_DIR):
+    zipfile_dir, _ = save_zip_file(root_dir, str(user.id), name, zipfile)
 
-    FileSystemStorage(location=root_dir).save(save_filename, zipfile) 
     dataset = save_dataset_to_database(name, user, zipfile_dir, ispublic)
     return dataset
 
@@ -480,9 +514,7 @@ def save_dataset_to_database(
     return dataset
 
 def save_folder(files: list, directories: dict, user: User, timestamp: str, root_dir: str = ROOT_DATASET_DIR, name: str = ""):
-    home_directory = get_home_directory(directories.values())
-    dataset_dir_unique = os.path.join(root_dir, f"{user.id}-{timestamp}")
-    dataset_dir = f"{dataset_dir_unique}-{home_directory}"
+    dataset_dir_unique = get_unique_dataset_directory(str(user.id), name)
     
     for file in files:
         relative_file_path = directories.get(file.name)
@@ -493,7 +525,7 @@ def save_folder(files: list, directories: dict, user: User, timestamp: str, root
         
         handle_uploaded_file(file, filename=file.name, dir=file_dir)
     
-    return dataset_dir
+    return dataset_dir_unique
 
 def handle_dataset_zip_upload(request, name, ispublic, timestamp = None, ctx: dict = {}, namespace='', zipfile_namespace='zipfile') -> dict:
     ispublic = request.POST.get(f"{namespace}_is_public")
@@ -533,8 +565,13 @@ def handle_dataset_folder_upload(request, ctx: dict = {}, namespace='', dataset_
 
     if len(dataset_folder) != 0 and len(directories_dict) != 0:
         timestamp = now_Ymd_HMS()
-        dataset_dir = save_folder(dataset_folder, directories_dict, request.user, timestamp, root_dir=ROOT_DATASET_DIR)
-        uploaded_dataset = save_dataset_to_database(name, request.user, dataset_dir, ispublic)
+        dataset_dir = save_folder(
+            dataset_folder, directories_dict, request.user, timestamp, 
+            root_dir=ROOT_DATASET_DIR, name=name
+        )
+        uploaded_dataset = save_dataset_to_database(
+            name, request.user, dataset_dir, ispublic
+        )
         return uploaded_dataset, ctx
     
     return None, ctx
@@ -625,17 +662,16 @@ def separate_original_folder_name(string: str) -> tuple:
 def fork_model(model_id, user, name, model_type, ispublic, description=""):
     chosen_model = Model.objects.filter(id=model_id).first()
     
-    timestamp = now_Ymd_HMS()
-
     root_dir = ROOT_MODEL_DIR
     home_directory = chosen_model.model_directory
-    model_dir_unique = os.path.join(root_dir, f"{user.id}-{timestamp}")
+    
+    model_dir_unique = get_unique_model_directory(str(user.id), name)
     
     home_directory_folder_name = os.path.basename(home_directory) 
     parts = separate_original_folder_name(home_directory_folder_name)
     original_folder_name = parts[1]
 
-    model_directory = f"{model_dir_unique}-{original_folder_name}"
+    model_directory = model_dir_unique
 
     result = copy_directory(chosen_model.model_directory, model_directory)
 
@@ -646,6 +682,30 @@ def fork_model(model_id, user, name, model_type, ispublic, description=""):
         ispublic, original_model=chosen_model, description=description)
 
     return model
+
+def fork_dataset(dataset_id, user, name, ispublic, description=""):
+    chosen_dataset = Dataset.objects.filter(id=dataset_id).first()
+        
+    dataset_dir_unique = get_unique_dataset_directory(str(user.id), name)
+    
+    dataset_directory = dataset_dir_unique
+
+    result = copy_directory(chosen_dataset.dataset_directory, dataset_directory)
+
+    if result == "OSError copy directory":
+        return
+
+    dataset = save_dataset_to_database(
+        name, 
+        user, 
+        dataset_directory, 
+        ispublic, 
+        original_dataset=chosen_dataset, 
+        description=description
+    )
+
+    return dataset
+
 
 def copy_directory(src: str, dest: str):
     try:
@@ -673,8 +733,15 @@ def upload_model(request):
 
     if form.is_valid() and len(model_folder) != 0 and len(directories_dict) != 0: 
         timestamp = now_Ymd_HMS()
-        model_directory = save_folder(model_folder, directories_dict, request.user, timestamp, root_dir=ROOT_MODEL_DIR)
-        save_model_folder_info_to_database(name, request.user, model_type, model_directory, ispublic, description=description)
+        model_directory = save_folder(
+            model_folder, directories_dict, request.user, timestamp, 
+            root_dir=ROOT_MODEL_DIR, 
+            name=name
+        )
+        save_model_folder_info_to_database(
+            name, request.user, model_type, model_directory, ispublic, 
+            description=description
+        )
         
     return render(request, "polls/upload_model.html", {"form": form})
 
@@ -983,7 +1050,8 @@ def save_model_to_file_system_and_database(user: User, uploaded_model, model_dir
             model_directories_dict, 
             user, 
             timestamp, 
-            root_dir=ROOT_MODEL_DIR
+            root_dir=ROOT_MODEL_DIR,
+            name=model_name
         )
         model = save_model_folder_info_to_database(
             model_name, 
@@ -1004,7 +1072,8 @@ def save_dataset_to_file_system_and_database(user: User, uploaded_dataset, datas
             dataset_directories_dict, 
             user, 
             timestamp, 
-            root_dir=ROOT_DATASET_DIR
+            root_dir=ROOT_DATASET_DIR,
+            name=dataset_name
         )
         dataset = save_dataset_to_database(
             dataset_name, 

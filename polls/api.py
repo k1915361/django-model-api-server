@@ -22,16 +22,16 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from .models import Dataset, Model, ModelDataset
 from .views import (
-    ROOT_TEMP, 
-    ASSET_USER_DIR,
-    ROOT_DATASET_DIR, 
-    ROOT_MODEL_DIR,
     MARKDOWN_FENCED_CODE,
     handle_extract_zip_file, 
     save_model_folder_info_to_database, 
     save_dataset_to_database, 
-    search_and_get_readme_markdown_by_directory
+    search_and_get_readme_markdown_by_directory,
+    fork_model,
+    fork_dataset
 )
+import re
+import csv
 import json
 import uuid
 import os 
@@ -40,18 +40,83 @@ import datetime
 import shutil
 import zipfile
 import base64
+import itertools
 
+from http import HTTPStatus
 from typing import Callable
 from datetime import datetime as dttime
 
 from .serializers import UserSerializer
 from .permission import IsOwnerOrReadOnly
     
-from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.tokens import RefreshToken 
 from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework_simplejwt.authentication import JWTAuthentication
-from rest_framework_simplejwt.exceptions import InvalidToken
-from ku_djangoo.settings import BASE_DIR
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from polls.views import handle_uploaded_file, iterate_folder_2levels
+from ku_djangoo.settings import BASE_DIR, ROOT_TEMP, ROOT_DATASET_DIR, ROOT_MODEL_DIR
+from ku_djangoo.minio_utils import minio_service
+from ku_djangoo.utils import get_unique_model_directory, get_unique_dataset_directory
+
+EXAMPLE_PUBLIC_DATASET_DIRECTORY = "asset/user/dataset/1-20241107_192036-CS_dataset"
+EXAMPLE_PRIVATE_DATASET_DIRECTORY = "asset/user/dataset/1-20241209_172716-CS_dataset"
+DATASET_BASE_FOLDER_NAME_REGEX = "\/\d+-\d{8}_\d{6}-[^\/]+\/"
+
+FILE_TYPES_DICT = {
+    '.txt': 'text/plain',
+    '.yaml': 'text/plain',
+    '.yml': 'text/plain',
+    '.csv': 'text/csv',
+    '.js': 'text/javascript',
+    '.xml': 'text/xml',
+    '.html': 'text/html',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.webp': 'image/webp',
+    '.svg': 'image/svg+xml',
+    '.tiff': 'image/tiff',
+    '.tif': 'image/tif',
+    '.bmp': 'image/bmp',
+    '.gif': 'image/gif',
+    '.mp3': 'audio/mpeg',
+    '.wav': 'audio/wav',
+    '.ogg': 'audio/ogg',
+    '.oga': 'audio/ogg',
+    '.aac': 'audio/aac',
+    '.flac': 'audio/flac',
+    '.mp4': 'video/mp4',
+    '.webm': 'video/webm',
+    '.ogv': 'video/ogg',
+    '.avi': 'video/x-msvideo',
+    '.mov': 'video/quicktime',
+    '.zip': 'application/zip',
+    '.json': 'application/json',
+    ".tar": "application/x-tar",
+    ".gz": "application/gzip",
+    ".rar": "application/vnd.rar",
+    ".7z": "application/x-7z-compressed",
+    ".bz2": "application/x-bzip2",
+    ".xz": "application/x-xz",
+    ".tgz": "application/gzip",
+    ".tbz2": "application/x-bzip2",
+    ".pdf": "application/pdf",
+    ".doc": "application/msword",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xls": "application/vnd.ms-excel",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".ppt": "application/vnd.ms-powerpoint",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".exe": "application/vnd.microsoft.portable-executable",
+    ".apk": "application/vnd.android.package-archive",
+    ".jar": "application/java-archive", 
+    ".war": "application/x-war", 
+    ".ear": "application/x-ear", 
+    ".ttf": "font/ttf",
+    ".otf": "font/otf",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+}
 
 LOGIN_EXPIRED_RESPONSE = JsonResponse(
     {"message": "Please re-login, your login has expired."},
@@ -83,6 +148,21 @@ NO_ACCESS_PERMISSION_JSON_RESPONSE = JsonResponse({
 NOT_FOUND_INVALID_QUERY_OR_DELETED_RECORD_JSON_RESPONSE = JsonResponse({
     'success': False, 
     'message': 'Not found - Invalid query or deleted record.'
+})
+SUCCESS_JSON_RESPONSE = JsonResponse({
+    'success': True
+})
+AUTHENTICATION_REQUIRED_JSON_RESPONSE = JsonResponse({
+    "error": "Authentication required"}, 
+    status=HTTPStatus.UNAUTHORIZED
+)
+PLEASE_LOGIN_JSON_RESPONSE = JsonResponse({
+    'success': False, 
+    'message': 'Please login.'
+})
+NO_PERMISSION_TO_TAKE_THE_ACTION_RESPONSE = JsonResponse({
+    'success': False, 
+    'message': 'No permission to take the action.'
 })
 
 SUCCESSFUL_ZIP_FILE_UPLOAD_RESPONSE = Response({
@@ -117,14 +197,14 @@ class ModelSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Model
-        fields = ["id", "name", "updated", "is_public", "original_model", "username", "model_directory"]
+        fields = ["id", "name", "updated", "is_public", "original_model", "model_type", "username", "model_directory", "description"]
 
 class DatasetSerializer(serializers.ModelSerializer):
     username = serializers.ReadOnlyField(source='user.username')
 
     class Meta:
         model = Dataset
-        fields = ["id", "name", "updated", "created", "is_public", "original_dataset", "username", "dataset_directory"]
+        fields = ["id", "name", "updated", "created", "is_public", "original_dataset", "username", "dataset_directory", "description"]
 
 class UserSerializer_(serializers.ModelSerializer):
 
@@ -282,6 +362,7 @@ class CustomLoginTokenAccessView(APIView):
 
         response = JsonResponse({
             "success": True,
+            "is_logged_in": True,
             "username": user.username,
         })
         response.set_cookie(
@@ -301,6 +382,57 @@ class CustomLoginTokenAccessView(APIView):
 
         return response
 
+class CustomLogoutTokenView(APIView):
+
+    authentication_classes = [JWTAuthentication] 
+    permission_classes = []
+
+    def post(self, request, *args, **kwargs):
+        try:
+            refresh_token = request.COOKIES.get('refresh_token')
+            if not refresh_token:
+                return Response({"detail": "Refresh token not found in cookies.", "success": False}, status=status.HTTP_400_BAD_REQUEST)
+            
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+
+            response = Response({"detail": "Successfully logged out.", "is_logged_in": False}, status=status.HTTP_200_OK)
+            response.delete_cookie('refresh_token')
+            response.delete_cookie('access_token')
+            return response
+        except InvalidToken:
+            return Response({"detail": "Invalid refresh token.", "success": False}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            print(e)
+            return Response({"detail": "An Error occured during logout.", "success": False}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class CustomCheckLoginStateTokenView(APIView):
+    authentication_classes = [JWTAuthentication] 
+    permission_classes = []
+    def post(self, request, *args, **kwargs):
+        refresh_token = request.COOKIES.get('refresh_token')
+        if not refresh_token:
+            return Response({"is_logged_in": False}, status=status.HTTP_200_OK)
+        try:
+            token = RefreshToken(refresh_token)
+            return Response({"is_logged_in": True}, status=status.HTTP_200_OK)
+        except InvalidToken:
+            response = Response({"is_logged_in": False}, status=status.HTTP_200_OK)
+            response.delete_cookie('refresh_token')
+            response.delete_cookie('access_token')
+            return response
+        except TokenError: 
+            response = Response({"is_logged_in": False}, status=status.HTTP_200_OK)
+            response.delete_cookie('refresh_token')
+            response.delete_cookie('access_token')
+            return response
+        except Exception as e:
+            print(f"Unexpected error during login check: {e}")
+            response = Response({"is_logged_in": False}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            response.delete_cookie('refresh_token')
+            response.delete_cookie('access_token')
+            return response
+    
 def empty_default_authentication_classes_and_permission_classes(view_func):
     @authentication_classes([]) 
     @permission_classes([]) 
@@ -421,7 +553,7 @@ def save_zip_bytes_file(bytes, filename='a_zip_file.zip', root_dir=ROOT_TEMP):
         binary_file.write(bytes)
     return
 
-def save_zip_file(zipfile, timestamp: str, extension: str ='.zip', root_dir: str = ROOT_TEMP):
+def save_zip_file(zipfile, timestamp: str, extension: str ='.zip', root_dir: str = ROOT_TEMP, name=''):
     filename = f'{zipfile}' or '_'
     try:
         filename = zipfile.name or '_'        
@@ -432,7 +564,8 @@ def save_zip_file(zipfile, timestamp: str, extension: str ='.zip', root_dir: str
         if filename.endswith(extension_):
             extension = ''
     
-    save_filename = f"{timestamp}-{filename}{extension}"
+    # TODO - update old directory format to new.
+    save_filename = f"{name}{extension}"
     zipfile_dir = os.path.join(root_dir, save_filename)
 
     FileSystemStorage(location=root_dir).save(save_filename, zipfile)     
@@ -574,18 +707,25 @@ def check_is_zipfile(zipfile, ):
                 return True
     return False
 
-def get_unique_directory(filename: str, user_id, root_dir: str):
+@DeprecationWarning
+def get_unique_directory_deprecated(filename: str, user_id, root_dir: str):
+    """
+    @deprecated. use get_unique_directory instead.
+    """
     timestamp = now_Ymd_HMS()
     filename_, file_extension = path_split(filename)
+    # TODO - update old directory format to new.
     unique_filename = f"{user_id}-{timestamp}-{filename_}"
     save_directory = os.path.join(root_dir, unique_filename)
     return save_directory, timestamp, unique_filename, filename_, file_extension
 
-def get_unique_model_directory(filename: str, user_id, root_dir: str = ROOT_MODEL_DIR):
-    return get_unique_directory(filename, user_id, root_dir) 
+@DeprecationWarning
+def get_unique_model_directory_deprecated(filename: str, user_id, root_dir: str = ROOT_MODEL_DIR):
+    return get_unique_directory_deprecated(filename, user_id, root_dir) 
 
-def get_unique_dataset_directory(filename: str, user_id, root_dir: str = ROOT_DATASET_DIR):
-    return get_unique_directory(filename, user_id, root_dir) 
+@DeprecationWarning
+def get_unique_dataset_directory_deprecated(filename: str, user_id, root_dir: str = ROOT_DATASET_DIR):
+    return get_unique_directory_deprecated(filename, user_id, root_dir) 
 
 def get_dataset_form_data(request, namespace = '', zipfile_namespace = 'dataset_') -> tuple[str, str, str, any]:
     name = request.POST.get(f'{namespace}name')
@@ -608,17 +748,20 @@ def model_form_post(request, format=None):
     user = identify_user_from_jwt_token_from_cookie(request)
     if user == None:
         return LOGIN_EXPIRED_RESPONSE
+    
+    user, response = identify_user_from_jwt_token_from_cookie_with_response(request)
+    if response: return response
 
-    name, model_type, is_public, description, model_zipfile = get_model_form_data(request)
+    model_name, model_type, is_public, description, model_zipfile = get_model_form_data(request)
     
     if model_zipfile == None or len(model_zipfile) == 0:
         return REQUIRED_ZIP_FILE_MISSING_RESPONSE
 
-    save_directory, _, _, _, _ = get_unique_model_directory(model_zipfile.name, user.id)
-
+    save_directory, _, _, _, _ = get_unique_model_directory(str(user.id), model_name)
+    
     try:
         handle_extract_zip_file(model_zipfile, save_directory)
-        save_model_folder_info_to_database(name, user, model_type, save_directory, is_public, description=description)
+        save_model_folder_info_to_database(model_name, user, model_type, save_directory, is_public, description=description)
     except ValueError:
         return ONLY_ZIP_FILE_TYPE_RESPONSE
 
@@ -629,6 +772,13 @@ def path_split(path: str) -> tuple[str, str]:
     split filename and extension
     """
     return os.path.splitext(path)
+
+def get_file_extension(file_path):
+    """Gets the file extension"""
+    _, ext = os.path.splitext(file_path)
+    if ext:  
+        return ext.lower() 
+    return ""
 
 @api_view(['POST'])
 @authentication_classes([]) 
@@ -643,7 +793,7 @@ def dataset_form_post(request, format=None):
     if dataset_zipfile == None or len(dataset_zipfile) == 0:
         return REQUIRED_ZIP_FILE_MISSING_RESPONSE
     
-    save_directory, _, _, _, _ = get_unique_dataset_directory(dataset_zipfile.name, user.id)
+    save_directory, _, _, _, _ = get_unique_dataset_directory(str(user.id), name)
     
     try:
         handle_extract_zip_file(dataset_zipfile, save_directory)
@@ -729,20 +879,17 @@ def test_page_range(request):
         'page_has_previous': current_page.has_previous(),
     })
 
-@api_view(['GET'])
-@authentication_classes([]) 
-@permission_classes([]) 
-def datasets_page_range(request):
+def datasets_page_range_function(request, Object=Dataset, Serializer=DatasetSerializer):
     user = identify_user_from_jwt_token_from_cookie(request)
     queryset = []
 
     if user == None:
-        queryset = Dataset.objects.filter(is_public=True)
+        queryset = Object.objects.filter(is_public=True)
     
     if user != None:        
-        queryset = Dataset.objects.filter(is_public_or_is_user_private(user))
+        queryset = Object.objects.filter(is_public_or_is_user_private(user))
         
-    serializer = DatasetSerializer(queryset, many=True)
+    serializer = Serializer(queryset, many=True)
     serializer_data = serializer.data
     
     page = request.GET.get('page', 1)
@@ -761,6 +908,17 @@ def datasets_page_range(request):
         'total_list_count': paginator.count,
         'num_pages': paginator.num_pages,
     })
+
+@api_view(['GET'])
+@authentication_classes([]) 
+@permission_classes([]) 
+def datasets_page_range(request):
+    return datasets_page_range_function(request, Object=Dataset, Serializer=DatasetSerializer)
+
+@api_view(['GET'])
+@empty_default_authentication_classes_and_permission_classes
+def models_page_range(request):
+    return datasets_page_range_function(request, Object=Model, Serializer=ModelSerializer)
 
 @api_view(['GET'])
 @empty_default_authentication_classes_and_permission_classes
@@ -822,10 +980,10 @@ class DatasetDetail(APIView):
 
     def get(self, request, id):
         user = identify_user_from_jwt_token_from_cookie(request)
-
         try:
-            dataset = Dataset.objects.get(id=id)
-            if dataset and not dataset.is_public and dataset.user != user:
+            dataset = Dataset.objects.get(id=id)            
+            if dataset and (not dataset.is_public) and dataset.user != user:
+                print('no access permission response')
                 return NO_ACCESS_PERMISSION_RESPONSE
         except Dataset.DoesNotExist:
             return NOT_FOUND_INVALID_ID_OR_DELETED_RECORD_RESPONSE
@@ -926,6 +1084,18 @@ def download_zip(folder_path: str):
 def is_not_public_and_not_owner(obj, user):
     return not obj.is_public and obj.user != user
 
+def obj_and_is_not_public_and_not_owner(obj, user):
+    return obj and is_not_public_and_not_owner(obj, user)
+
+def check_obj_exist_and_user_has_access_permission(obj, user):
+    if not obj:
+        return NOT_FOUND_INVALID_QUERY_OR_DELETED_RECORD_JSON_RESPONSE
+    
+    if obj_and_is_not_public_and_not_owner(obj, user):       
+        return NO_ACCESS_PERMISSION_JSON_RESPONSE
+    
+    return None
+
 def remove_temp_path(path: str):
     os.remove(path)
 
@@ -986,6 +1156,8 @@ def test_download_dataset_zip(request):
 
 def path_basename(path: str) -> str:
     """
+    get file name. 
+
     in:
     /folderA/folderB/folderC/folderD/
     
@@ -1058,40 +1230,52 @@ def text_markdown_fenced_code_to_markdown(readme_text):
     readme_markdown = MARKDOWN_FENCED_CODE.convert(readme_text)
     return readme_markdown
 
+def passfunc(s):
+    return s
+
+def preformat(txt):
+    return f'<pre>{txt}</pre>'
+
 @api_view(['GET'])
 @empty_default_authentication_classes_and_permission_classes
-def get_dataset_image(request, user_id, datetime, folder_name, image_path):
-    dataset_directory = os.path.join(ROOT_DATASET_DIR, f"{user_id}-{datetime}-{folder_name}")
+def get_dataset_image_api(request, user_id, dataset_name, image_path):
+    return get_dataset_image(request, user_id, dataset_name, image_path)
+
+def get_dataset_image(request, user_id, dataset_name, image_path, Object=Dataset, lookup_key='dataset_directory', get_unique_directory=get_unique_dataset_directory):
+    dataset_directory = get_unique_directory(str(user_id), dataset_name)    
     file_path_ = f"{dataset_directory}/{image_path}"
     file_path = file_path_.rstrip('/')
     user = identify_user_from_jwt_token_from_cookie(request)
     content_type = ''
     file_read_type = 'rb'
+    formatfunction = passfunc
+    
+    content_type = FILE_TYPES_DICT.get(get_file_extension(file_path))
 
-    if (file_path.endswith('.txt')
-        or 
-        file_path.endswith('.yaml')
-        ):
-        content_type = 'text/html'
-        file_read_type = 'r'
-    if (file_path.endswith('.jpg') 
-        or file_path.endswith('.jpeg')
-        ):
-        content_type = 'image/jpeg'
-    if file_path.endswith('.png'):
-        content_type = 'image/png'
+    if (content_type == 'text/html'
+        or
+        content_type == 'text/plain'
+    ):
+        formatfunction = preformat
+        file_read_type = 'r'    
 
-    dataset = Dataset.objects.get(dataset_directory = dataset_directory)
+    try:
+        dataset = Object.objects.get(**{lookup_key: dataset_directory})
+    except Exception as e:
+        print(f'Dataset get query error: {e}')
+        
     data = None
 
     if not dataset:
+        print(' dataset not found')
         return HttpResponse(None, content_type=content_type)
     
     if dataset and not dataset.is_public and dataset.user != user:
+        print(f' dataset: no access permission {dataset.is_public} {dataset.user} {user}')
         return HttpResponse(None, content_type=content_type)
     
-    if os.path.exists(file_path_) and os.path.isdir(file_path_):
-        return get_dataset_file_tree(request, user_id, datetime, folder_name, image_path)
+    if os.path.exists(file_path_) and os.path.isdir(file_path_):        
+        return get_dataset_file_tree(request, user_id, dataset_name, image_path)
 
     if ((dataset and dataset.is_public) 
         or 
@@ -1100,20 +1284,25 @@ def get_dataset_image(request, user_id, datetime, folder_name, image_path):
         with open(file_path, file_read_type) as file:
             data = file.read()
             if "readme" in file_path.lower() or file_path.endswith(".md"):
-                data = text_markdown_fenced_code_to_markdown(data)
-            elif content_type == 'text/html':
-                data =  f'<pre>{data}</pre>'
+                data = text_markdown_fenced_code_to_markdown(data)            
+            data = formatfunction(data)
 
     return HttpResponse(data, content_type=content_type)
 
-def get_dataset_file_tree(request, user_id, datetime, folder_name, path):
-    dataset_base_directory = os.path.join(ROOT_DATASET_DIR, f"{user_id}-{datetime}-{folder_name}")
+@api_view(['GET'])
+@empty_default_authentication_classes_and_permission_classes
+def get_model_image(request, user_id, model_name, image_path):
+    return get_dataset_image(request, user_id, model_name, image_path, Object=Model, lookup_key='model_directory', get_unique_directory=get_unique_model_directory)
+
+def get_dataset_file_tree(request, user_id, dataset_name, path, Object=Dataset, root_dir=ROOT_DATASET_DIR, lookup_key='dataset_directory'):
+    print(' get_dataset_file_tree ')
+    dataset_base_directory = get_unique_dataset_directory(str(user_id), dataset_name, root_dir=root_dir)
     dataset_directory = os.path.join(dataset_base_directory, path)
     user = identify_user_from_jwt_token_from_cookie(request)
     if not os.path.exists(dataset_directory) or not os.path.isdir(dataset_directory):
         return JsonResponse({"error": "Invalid directory path"}, status=400)
     
-    dataset = Dataset.objects.get(dataset_directory = dataset_base_directory)
+    dataset = Object.objects.get(**{lookup_key: dataset_base_directory})
 
     if not dataset:
         return NOT_FOUND_INVALID_QUERY_OR_DELETED_RECORD_JSON_RESPONSE
@@ -1138,13 +1327,322 @@ def get_dataset_file_tree(request, user_id, datetime, folder_name, path):
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
 
+def find_file_path_for_two_tree_levels(directory, name_end):
+    for path in iterate_folder_2levels(directory):
+        if (path.name.endswith(name_end) 
+            and path.is_file()
+        ):
+            return path
+    return
+
+def get_csv_data(request):
+    csv_path = request.path.replace('/api/dataset/', '')
+    csv_path = f"{ROOT_DATASET_DIR}{csv_path}"
+
+    if not csv_path.endswith('.csv'):
+        return HttpResponse("Path must end with '.csv'.", status=404)
+    
+    user = identify_user_from_jwt_token_from_cookie(request)    
+    
+    dataset_base_directory = csv_path.replace('/.csv', '')
+    
+    csv_path = find_file_path_for_two_tree_levels(dataset_base_directory, '.csv')
+
+    dataset = Dataset.objects.get(dataset_directory = dataset_base_directory)
+    
+    response = check_obj_exist_and_user_has_access_permission(dataset, user)
+    if response: return response
+    
+    num_of_rows_to_read = 61
+    csv_data = []
+
+    try:
+        with open(csv_path, 'r', encoding='utf-8') as csvfile: 
+            reader = csv.reader(csvfile)
+            
+            limited_rows = list(itertools.islice(reader, num_of_rows_to_read))
+            csv_data = '\n'.join([','.join(row) for row in limited_rows])
+
+        response = HttpResponse(csv_data, content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="data.csv"' 
+        return response
+    except FileNotFoundError:
+        return HttpResponse("File not found", status=404)
+    except Exception as e:
+        return HttpResponse(f"An error occurred: {e}", status=500)
+
+@api_view(['POST'])
+@empty_default_authentication_classes_and_permission_classes
+def fork_model_api(request):
+
+    return SUCCESS_JSON_RESPONSE
+
+@api_view(['POST'])
+@empty_default_authentication_classes_and_permission_classes
+def fork_dataset_api(request):
+    user = identify_user_from_jwt_token_from_cookie(request)    
+    print(user)
+    if not user:
+        return AUTHENTICATION_REQUIRED_JSON_RESPONSE
+    
+    dataset_id = request.POST.get('dataset_id')
+    dataset_name = request.POST.get('name')
+    ispublic = request.POST.get('is_public')
+    description = request.POST.get('description')
+
+    fork_dataset(dataset_id, user, dataset_name, ispublic, description=description)
+    return SUCCESS_JSON_RESPONSE
+
+def store_temporary_file(file, filename='afile', base_tmp_dir="tmp/", file_extension=''):
+    handle_uploaded_file(file, filename=filename, dir=base_tmp_dir, file_extension=file_extension)
+    return os.path.join(base_tmp_dir, f"{filename}{file_extension}")
+
+@api_view(['POST'])
+@empty_default_authentication_classes_and_permission_classes
+def save_dataset_file_to_minio_api(request):
+    return save_dataset_file_to_minio(request)
+
+def save_dataset_file_to_minio(request, pathbase='dataset/'):
+    user = identify_user_from_jwt_token_from_cookie(request)
+    if not user:
+        return AUTHENTICATION_REQUIRED_JSON_RESPONSE
+    
+    namespace = ''
+    dataset_name = 'data'
+    file = request.FILES.get(f'{namespace}{dataset_name}')
+    filename = 'file'
+    if file:
+        filename = file.name
+    file_basename = os.path.basename(filename)
+    sanitized_filename = file_basename.replace(" ", "_")
+    temp_dir = store_temporary_file(file, filename=sanitized_filename)
+    source_file = temp_dir
+    object_name = f'{pathbase}{sanitized_filename}'
+    minio_service.save_file_as_object(object_name, source_file)
+    return SUCCESS_JSON_RESPONSE
+
 @api_view(['GET'])
 @empty_default_authentication_classes_and_permission_classes
-def respond_dataset_file_tree(request, user_id, datetime, folder_name, path=''):
+def read_dataset_from_minio(request, id):
+    dataset, response = Dataset_get(id)
+    if response: return response
+    user, response = identify_user_from_cookie_jwt_token_and_check_obj_user_access_permission(request, dataset)
+    if response: return response
+    
+    dataset_dir = dataset.dataset_directory.replace(ROOT_DATASET_DIR, '')
+    dataset_dir = dataset_dir.rstrip('/')
+    
+    if not dataset_dir.startswith('dataset/'):
+        dataset_dir = f'dataset/{dataset_dir}'
+
+    file_extension = get_file_extension(dataset_dir)
+    content_type = FILE_TYPES_DICT.get(file_extension)
+    if not content_type:
+        file_content, status_code = minio_service.get_zipped_file(dataset_dir)
+        content_type = 'application/zip'
+        file_extension = '.zip'
+    else:
+        file_content = minio_service.read_file_from_minio(dataset_dir)
+    
+    response = HttpResponse(file_content, content_type=content_type)
+    response['Content-Disposition'] = f'attachment; filename="{dataset_dir}{file_extension}"'
+    return response
+
+@api_view(['GET'])
+@empty_default_authentication_classes_and_permission_classes
+def test_get_zip_file_from_minio(request):
+    object_name = 'CS_dataset.zip'
+    file_content = minio_service.read_file_from_minio(object_name)
+    response = HttpResponse(file_content, content_type='application/zip') #  application/zip or application/octet-stream
+    response['Content-Disposition'] = f'attachment; filename="my_zip.zip"'
+    return response
+
+def Dataset_get(id):
+    try:
+        return Dataset.objects.get(id=id), None
+    except Exception as e:
+        print(f"Error getting a dataset: {e}")
+        return None, DATASET_NOT_FOUND_INVALID_ID_OR_DELETED_RECORD_RESPONSE
+
+def Dataset_filter(condition):
+    try:
+        return Dataset.objects.filter(condition), None
+    except Exception as e:
+        print(f"Error filtering dataset: {e}")
+        return None, DATASET_NOT_FOUND_INVALID_ID_OR_DELETED_RECORD_RESPONSE
+
+def identify_user_from_jwt_token_from_cookie_with_response(request):
+    user = identify_user_from_jwt_token_from_cookie(request)
+    if user == None:
+        return None, AUTHENTICATION_REQUIRED_JSON_RESPONSE
+    return user, None
+
+def identify_user_from_cookie_jwt_token_and_check_obj_user_access_permission(request, dataset):
+    user = identify_user_from_jwt_token_from_cookie(request)
+    if user == None:
+        return None, AUTHENTICATION_REQUIRED_JSON_RESPONSE
+    response = check_obj_exist_and_user_has_access_permission(dataset, user)
+    return user, response
+
+@api_view(['DELETE'])
+@empty_default_authentication_classes_and_permission_classes
+def delete_dataset_file_from_minio(request, id):
+    dataset, error = Dataset_get(id)
+    if error: return error
+
+    user, response = identify_user_from_cookie_jwt_token_and_check_obj_user_access_permission(request, dataset)
+    if response: return response
+
+    object_name = 'dataset/'
+    success = minio_service.remove_object(object_name)
+    if success:
+        return JsonResponse({}, status=HTTPStatus.NO_CONTENT)
+    else:
+        return JsonResponse({'error': 'Failed to delete object'}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@empty_default_authentication_classes_and_permission_classes
+def list_minio_bucket_object(request):
+    minio_service.print_list_object()
+    object_name = 'CS_dataset.zip'
+    success = minio_service.check_object_deleted(object_name)
+    print(success)
+    file_content = minio_service.read_file_from_minio(object_name)
+    response = HttpResponse(file_content, content_type='application/zip') 
+    response['Content-Disposition'] = f'attachment; filename="my_zip.zip"'
+    return response
+
+@api_view(['PUT'])
+@empty_default_authentication_classes_and_permission_classes
+def update_dataset_file_in_minio(request, id, pathbase='dataset/'):
+    dataset, error = Dataset_get(id)
+    if error: return error
+
+    user, response = identify_user_from_cookie_jwt_token_and_check_obj_user_access_permission(request, dataset)
+    if response: return response
+
+    namespace = ''
+    dataset_name = 'data'
+    file = request.FILES.get(f'{namespace}{dataset_name}')
+    filename = 'file'
+    if file:
+        filename = file.name
+    file_basename = os.path.basename(filename)
+    sanitized_filename = file_basename.replace(" ", "_")
+    object_name = sanitized_filename
+    temp_dir = store_temporary_file(file, filename = object_name)
+    source_file = temp_dir
+    minio_service.save_file_as_object(object_name, source_file)
+    return SUCCESS_JSON_RESPONSE
+
+@api_view(['GET'])
+@empty_default_authentication_classes_and_permission_classes
+def read_file_from_minio_test(request):
+    object_name = 'ppe_0000_jpg.rf.c102a9a7c8dec01565a8f95ff295974c.jpg'
+    object_name = 'my-test-file.jpg'
+    file_content = minio_service.read_file_from_minio(object_name)
+
+    response = HttpResponse(file_content, content_type='image/jpg')
+    response['Content-Disposition'] = f'attachment; filename="my_image.jpg"'
+    return response
+
+@api_view(['GET'])
+@empty_default_authentication_classes_and_permission_classes
+def temp(request):
+    delete_all_datasets_in_minio()
+    return SUCCESS_JSON_RESPONSE
+
+def upload_all_datasets_to_minio(local_dir=ROOT_MODEL_DIR, base_root='model'):
+    """ Developer tool."""
+    for root, _, files in os.walk(local_dir):
+        for file in files:
+            local_file_path = os.path.join(root, file)
+            object_name = os.path.relpath(local_file_path, local_dir)
+            object_name = os.path.join(base_root, object_name)
+            minio_service.save_file_as_object(object_name, local_file_path)
+    return SUCCESS_JSON_RESPONSE
+
+def delete_all_django_datasets_in_minio(local_dir=ROOT_DATASET_DIR, base_root='dataset'):
+    # TODO remove all datasets and models in minio and upload_all_datasets_to_minio again.
+    """ Developer tool."""
+    for root, _, files in os.walk(local_dir):
+        for file in files:
+            local_file_path = os.path.join(root, file)
+            object_name = os.path.relpath(local_file_path, local_dir)
+            minio_service.delete_all_object_versions(object_name)
+    return SUCCESS_JSON_RESPONSE
+
+def delete_all_datasets_in_minio(local_dir=ROOT_DATASET_DIR, base_root='dataset'):
+    """ Developer tool."""
+    local_dir='/data/bucket1/dataset'
+    # minio_service.delete_all_object_versions(object_name)
+    for root, _, files in os.walk(local_dir):
+        for file in files:
+            local_file_path = os.path.join(root, file)
+            # object_name = os.path.relpath(local_file_path, local_dir)
+            print(local_file_path, local_dir)
+            # minio_service.delete_all_object_versions(object_name)
+    return SUCCESS_JSON_RESPONSE
+
+def move_all_datasets_directory():
+    """Developer tool."""
+    destination_base_dir = 'asset/dataset/'
+    
+    os.makedirs(destination_base_dir, exist_ok=True)
+
+    datasets = Dataset.objects.all()    
+    for dataset in datasets:
+        userid = dataset.user.id
+        datasetname = dataset.name
+        source_dir = dataset.dataset_directory
+        destination_dir = f'{destination_base_dir}{userid}/{datasetname}'
+        
+        try:
+            shutil.move(source_dir, destination_dir)
+            dataset.dataset_directory = destination_dir
+            dataset.save()
+        except Exception as e:
+            print(f"Error moving {source_dir}: {e}")
+
+def move_all_models_directory():
+    """Developer tool."""
+    destination_base_dir = 'asset/model/'
+    
+    os.makedirs(destination_base_dir, exist_ok=True)
+
+    models = Model.objects.all()    
+    for model in models:
+        userid = model.user.id
+        modelname = model.name        
+        source_dir = model.model_directory
+        destination_dir = f'{destination_base_dir}{userid}/{modelname}'
+        print(source_dir, ' -- ', destination_dir)
+        
+        try:
+            shutil.move(source_dir, destination_dir)
+            model.model_directory = destination_dir
+            model.save()
+        except Exception as e:
+            print(f"Error moving {source_dir}: {e}")
+
+
+@api_view(['GET'])
+@empty_default_authentication_classes_and_permission_classes
+def respond_dataset_file_tree(request, user_id, dataset_name, path=''):
     """
     API function to return a JSON object representing a tree of file paths limited to one level.
     """
-    return get_dataset_file_tree(request, user_id, datetime, folder_name, path)
+    print(user_id, dataset_name, path)
+    return get_dataset_file_tree(request, user_id, dataset_name, path)
+
+@api_view(['GET'])
+@empty_default_authentication_classes_and_permission_classes
+def respond_model_file_tree(request, user_id, model_name, path=''):
+    """
+    API function to return a JSON object representing a tree of file paths limited to one level.
+    """
+    print(user_id, model_name, path)
+    return get_dataset_file_tree(request, user_id, model_name, path, Object=Model, root_dir=ROOT_MODEL_DIR, lookup_key='model_directory')
 
 @api_view(['GET'])
 def get_request_username(request, pk, format=None):

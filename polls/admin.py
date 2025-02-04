@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Model, Dataset, ModelDataset, Choice, Question
+from .models import Model, Dataset, ModelDataset, Choice, Question, DatasetActionSet, DatasetAction, Task, TaskAction
 
 
 class QuestionAdmin(admin.ModelAdmin):
@@ -12,7 +12,8 @@ class QuestionAdmin(admin.ModelAdmin):
 admin.site.register(Model)
 admin.site.register(Dataset)
 admin.site.register(ModelDataset)
-
-admin.site.register(Question, QuestionAdmin)
-admin.site.register(Choice)
+admin.site.register(DatasetActionSet)
+admin.site.register(DatasetAction)
+admin.site.register(Task)
+admin.site.register(TaskAction)
 

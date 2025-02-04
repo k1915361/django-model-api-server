@@ -4,6 +4,7 @@ from django.db import models
 from django.utils import timezone
 from django.contrib.auth.models import User
 from django.db.models import UniqueConstraint
+from django.utils.translation import gettext_lazy as _
 
 # ignore Question and Choice # they are templates to help structure models
 class Question(models.Model):
@@ -31,19 +32,16 @@ class Model(models.Model):
     original_model = models.ForeignKey("self", on_delete=models.SET_NULL, blank=True, null=True) 
     
     model_type = models.CharField(max_length=320)
-    model_directory = models.CharField(max_length=2048)
+    model_directory = models.CharField(max_length=2048, unique=True)
     is_public = models.BooleanField(default=False) 
 
     description = models.CharField(max_length=320, blank=True) 
     
     created = models.DateTimeField(default=timezone.now) 
-    updated = models.DateTimeField(auto_now=True) # retrain finish date. successor creation date. 
+    updated = models.DateTimeField(auto_now=True) 
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
-
-    # no_of_parameter = models.IntegerField(default=0) 
-    # train_time = DurationField(default=0) # time took to train or retrain the model 
 
     class Meta:
         constraints = [
@@ -55,7 +53,7 @@ class Dataset(models.Model):
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
     original_dataset = models.ForeignKey("self", on_delete=models.SET_NULL, blank=True, null=True)
     
-    dataset_directory = models.CharField(max_length=2048)
+    dataset_directory = models.CharField(max_length=2048, unique=True)
     is_public = models.BooleanField(default=False)
 
     description = models.CharField(max_length=320, blank=True) 
@@ -76,26 +74,35 @@ class ModelDataset(models.Model):
     class Meta:
         unique_together = ('model', 'dataset',)
 
-class Image_Dataset(models.Model):
-    name = models.CharField(max_length=320)
-    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True) 
-    
-    dataset_directory = models.CharField(max_length=2048)
-    is_public = models.BooleanField(default=False)
+class Task(models.Model):
+    task_name = models.CharField(max_length=320)
 
-    description = models.CharField(max_length=320, blank=True) 
-    
-    created = models.DateTimeField(default=timezone.now) 
-    updated = models.DateTimeField(auto_now=True) 
+# $ python3.11 -m manage makemigrations polls # ERRORS: # polls.DatasetActionSet.action_type: (fields.E005) 'choices' must be an iterable containing (actual value, human readable name) tuples.
+class DatasetActionSet(models.Model):
 
-class CSV_Dataset(models.Model):
-    name = models.CharField(max_length=320)
-    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True) 
-    
-    dataset_directory = models.CharField(max_length=2048)
-    is_public = models.BooleanField(default=False)
+    ACTION_SET = (
+        (1, "CLEANING"),
+        (2, "ANALYSIS"),
+        (3, "ENRICHMENT"),
+        (4, "CURATION"),
+        (5, "DATA_BALANCING"),
+        (6, "EXPLAINABLE_AI"),
+        (None, "__empty__"),
+    )
+    action_type = models.IntegerField(choices=ACTION_SET, unique=True)
 
-    description = models.CharField(max_length=320, blank=True) 
+class DatasetAction(models.Model):
+    parameters = models.JSONField() 
+    action = models.ForeignKey(DatasetActionSet, on_delete=models.CASCADE)
+    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
     
-    created = models.DateTimeField(default=timezone.now) 
-    updated = models.DateTimeField(auto_now=True) 
+    def get_action_label(self):  # For easy label access
+        return self.ActionType(self.action_type).label # corrected access
+
+    @property
+    def action_label(self):
+        return self.action.action_type.label
+
+class TaskAction(models.Model):
+    task = models.ForeignKey(Task, on_delete=models.CASCADE)
+    action = models.ForeignKey(DatasetAction, on_delete=models.CASCADE) 
