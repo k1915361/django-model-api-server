@@ -1,7 +1,9 @@
 from django import forms
 from django.db.models import Q
 from django.db.models import F
-from django.http import HttpResponseRedirect
+from django.http import HttpResponseRedirect, JsonResponse
+from rest_framework.authtoken.models import Token
+from rest_framework.decorators import api_view
 from .models import Dataset, Model, ModelDataset, Question, Choice
 from django.urls import reverse
 from django.utils import timezone
@@ -662,14 +664,7 @@ def separate_original_folder_name(string: str) -> tuple:
 def fork_model(model_id, user, name, model_type, ispublic, description=""):
     chosen_model = Model.objects.filter(id=model_id).first()
     
-    root_dir = ROOT_MODEL_DIR
-    home_directory = chosen_model.model_directory
-    
     model_dir_unique = get_unique_model_directory(str(user.id), name)
-    
-    home_directory_folder_name = os.path.basename(home_directory) 
-    parts = separate_original_folder_name(home_directory_folder_name)
-    original_folder_name = parts[1]
 
     model_directory = model_dir_unique
 
@@ -1257,3 +1252,28 @@ def personal_model_repo_view(request):
 def personal_dataset_analysis_view(request):
     template_name = "polls/personal_dataset_analysis.html"
     return render(request, template_name)
+
+
+@api_view(['POST'])
+def login_api(request):
+    body = request.body
+    data = json.loads(body)
+
+    username = data["username"]
+    password = data["password"]
+    user = authenticate(request, username=username, password=password)
+
+    response_data = {
+        "username": username,
+    }
+
+    request.session._get_or_create_session_key()
+
+    if user is not None or request.user.is_authenticated:
+        login(request, user)
+        response_data['is_authenticated'] = True
+        token, created = Token.objects.get_or_create(user=user)
+        response_data["token"] = token
+        return JsonResponse(response_data)
+
+    return JsonResponse(response_data)

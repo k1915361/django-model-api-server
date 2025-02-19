@@ -77,32 +77,58 @@ class ModelDataset(models.Model):
 class Task(models.Model):
     task_name = models.CharField(max_length=320)
 
-# $ python3.11 -m manage makemigrations polls # ERRORS: # polls.DatasetActionSet.action_type: (fields.E005) 'choices' must be an iterable containing (actual value, human readable name) tuples.
 class DatasetActionSet(models.Model):
-
-    ACTION_SET = (
-        (1, "CLEANING"),
-        (2, "ANALYSIS"),
-        (3, "ENRICHMENT"),
-        (4, "CURATION"),
-        (5, "DATA_BALANCING"),
-        (6, "EXPLAINABLE_AI"),
-        (None, "__empty__"),
-    )
-    action_type = models.IntegerField(choices=ACTION_SET, unique=True)
+    class ACTION_SET(models.TextChoices):
+        CLEANING = "cleaning", _("CLEANING")
+        ANALYSIS = "analysis", _("ANALYSIS")
+        ENRICHMENT = "enrichment", _("ENRICHMENT")
+        CURATION = "curation", _("CURATION")
+        BALANCING = "balancing", _("BALANCING")
+        EXPLAINABLE_AI = "explainable_ai", _("EXPLAINABLE_AI")
+        UNKNOWN = _("(Unknown)")
+        
+    action_type = models.CharField(choices=ACTION_SET.choices)
 
 class DatasetAction(models.Model):
     parameters = models.JSONField() 
     action = models.ForeignKey(DatasetActionSet, on_delete=models.CASCADE)
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
     
-    def get_action_label(self):  # For easy label access
-        return self.ActionType(self.action_type).label # corrected access
-
     @property
     def action_label(self):
         return self.action.action_type.label
-
-class TaskAction(models.Model):
+    
+class DatasetTaskAction(models.Model):
+    """
+    one-many task-action.
+    A task can have many actions.
+    """
     task = models.ForeignKey(Task, on_delete=models.CASCADE)
     action = models.ForeignKey(DatasetAction, on_delete=models.CASCADE) 
+
+class ModelActionSet(models.Model):
+    class ACTION_SET (models.TextChoices):
+        ANALYSIS = "analysis", _("ANALYSIS")
+        DISTILLATION = "distillation", _("DISTILLATION")
+        FINE_TUNING = "fine_tuning", _("FINE_TUNING")
+        EXPLAINABLE_AI = "explainable_ai", _("EXPLAINABLE_AI")
+        UNKNOWN = _("(Unknown)")
+    
+    action_type = models.CharField(choices=ACTION_SET.choices, unique=True)
+
+class ModelAction(models.Model):
+    parameters = models.JSONField() 
+    action = models.ForeignKey(ModelActionSet, on_delete=models.CASCADE)
+    model = models.ForeignKey(Model, on_delete=models.CASCADE)
+    
+    @property
+    def action_label(self):
+        return self.action.action_type.label
+    
+class ModelTaskAction(models.Model):
+    """
+    one-many task-action.
+    A task can have many actions.
+    """
+    task = models.ForeignKey(Task, on_delete=models.CASCADE)
+    action = models.ForeignKey(ModelAction, on_delete=models.CASCADE) 

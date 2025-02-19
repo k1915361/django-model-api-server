@@ -41,7 +41,7 @@ urlpatterns = [
     path("model-list-choose-one-to-relate-dataset/", views.model_list_choose_one_to_relate_a_dataset,
         name="model_list_choose_one_to_relate_dataset"),
     
-    path("login-api/", api.login_api, name="login api"),
+    path("login-api/", views.login_api, name="login api"),
     path("models/", api.get_models_api, name="get models api"),    
     path("datasets/", api.get_datasets_api, name="get datasets api"),
     path('models_/', api.ModelList.as_view()),

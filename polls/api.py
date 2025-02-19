@@ -1,14 +1,15 @@
+from django.db import IntegrityError
 from django.db.models import Q
 from django.db.models import F
 from django.contrib.auth.models import User
 from django.core.files.storage import FileSystemStorage
 from django.core.paginator import Paginator
 from django.contrib.auth import authenticate, login, logout
-from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.csrf import csrf_exempt, csrf_protect, ensure_csrf_cookie
 from django.http import JsonResponse, FileResponse, HttpResponse
 from django.utils import timezone
+from django.utils.decorators import method_decorator
 from rest_framework import serializers
-from rest_framework.authtoken.models import Token
 from rest_framework import generics
 from rest_framework import permissions
 from rest_framework import status
@@ -20,6 +21,8 @@ from rest_framework.decorators import (
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny
+
 from .models import Dataset, Model, ModelDataset
 from .views import (
     MARKDOWN_FENCED_CODE,
@@ -49,18 +52,27 @@ from datetime import datetime as dttime
 from .serializers import UserSerializer
 from .permission import IsOwnerOrReadOnly
     
-from rest_framework_simplejwt.tokens import RefreshToken 
+from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
 from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from polls.views import handle_uploaded_file, iterate_folder_2levels
+from polls.models import Task
 from ku_djangoo.settings import BASE_DIR, ROOT_TEMP, ROOT_DATASET_DIR, ROOT_MODEL_DIR
 from ku_djangoo.minio_utils import minio_service
 from ku_djangoo.utils import get_unique_model_directory, get_unique_dataset_directory
 
-EXAMPLE_PUBLIC_DATASET_DIRECTORY = "asset/user/dataset/1-20241107_192036-CS_dataset"
-EXAMPLE_PRIVATE_DATASET_DIRECTORY = "asset/user/dataset/1-20241209_172716-CS_dataset"
+JWTAUTH = JWTAuthentication()
+EXAMPLE_DATASET_DIRECTORY_FORMAT = "asset/dataset/<user_id>/<dataset_name>"
+EXAMPLE_DATASET_DIRECTORY = "asset/dataset/1/CS_dataset"
 DATASET_BASE_FOLDER_NAME_REGEX = "\/\d+-\d{8}_\d{6}-[^\/]+\/"
+
+COOKIE_DEFAULTS = {
+    "httponly": True,
+    "secure": False,  # Set to True in production
+    "samesite": "Lax",
+    "path": "/",
+}
 
 FILE_TYPES_DICT = {
     '.txt': 'text/plain',
@@ -118,12 +130,12 @@ FILE_TYPES_DICT = {
     ".woff2": "font/woff2",
 }
 
-LOGIN_EXPIRED_RESPONSE = JsonResponse(
+LOGIN_EXPIRED_RESPONSE = Response(
     {"message": "Please re-login, your login has expired."},
     status=status.HTTP_401_UNAUTHORIZED
 )
 
-INVALID_LOGIN_RESPONSE = JsonResponse(
+INVALID_LOGIN_RESPONSE = Response(
     {"message": "Invalid credentials"}, 
     status=status.HTTP_401_UNAUTHORIZED
 )
@@ -133,34 +145,34 @@ ONLY_GET_REQUEST_RESPONSE = Response(
     status=status.HTTP_400_BAD_REQUEST
 )
 
-REQUIRED_ZIP_FILE_MISSING_RESPONSE = JsonResponse({
+REQUIRED_ZIP_FILE_MISSING_RESPONSE = Response({
     'message': 'The required zipfile is not uploaded.'
 })
 
-ONLY_ZIP_FILE_TYPE_RESPONSE = JsonResponse({
+ONLY_ZIP_FILE_TYPE_RESPONSE = Response({
     "error": "Unable to extract the zip file. Please ensure to give the .zip file type."}, 
     status=400
 )
-NO_ACCESS_PERMISSION_JSON_RESPONSE = JsonResponse({
+NO_ACCESS_PERMISSION_RESPONSE = Response({
     'success': False, 
     'message': 'No access permission.'
 })
-NOT_FOUND_INVALID_QUERY_OR_DELETED_RECORD_JSON_RESPONSE = JsonResponse({
+NOT_FOUND_INVALID_QUERY_OR_DELETED_RECORD_RESPONSE = Response({
     'success': False, 
     'message': 'Not found - Invalid query or deleted record.'
 })
-SUCCESS_JSON_RESPONSE = JsonResponse({
+SUCCESS_RESPONSE = Response({
     'success': True
 })
-AUTHENTICATION_REQUIRED_JSON_RESPONSE = JsonResponse({
+AUTHENTICATION_REQUIRED_RESPONSE = Response({
     "error": "Authentication required"}, 
     status=HTTPStatus.UNAUTHORIZED
 )
-PLEASE_LOGIN_JSON_RESPONSE = JsonResponse({
+PLEASE_LOGIN_RESPONSE = Response({
     'success': False, 
     'message': 'Please login.'
 })
-NO_PERMISSION_TO_TAKE_THE_ACTION_RESPONSE = JsonResponse({
+NO_PERMISSION_TO_TAKE_THE_ACTION_RESPONSE = Response({
     'success': False, 
     'message': 'No permission to take the action.'
 })
@@ -277,47 +289,104 @@ class CustomTokenRefreshView(TokenRefreshView):
             return Response({'detail': "Failed to refresh access token."}, 
                             status=status.HTTP_400_BAD_REQUEST)
 
-def identify_user_from_jwt_access_token_from_cookie(request):
-    auth = JWTAuthentication()
+def identify_user_from_jwt_access_token(access_token):
+    if not access_token:
+        return None
     try:
-        validated_token = auth.get_validated_token(request.COOKIES.get('access_token'))
-        user = auth.get_user(validated_token)
+        validated_token = JWTAUTH.get_validated_token(access_token)
+        user = JWTAUTH.get_user(validated_token)
         return user
-    except InvalidToken:
+    except (InvalidToken, TokenError):
+        return None 
+    except Exception as e:
+        print(f"Token verification error: {e}")
         return None
 
-def get_user_id_from_jwt_refresh_token(request):
+def identify_user_from_jwt_access_token_from_request_cookie(request):
+    access_token = request.COOKIES.get('access_token')
+    if access_token:
+        return identify_user_from_jwt_access_token(access_token)    
+    return None
+
+def get_user_id_from_jwt_refresh_token(refresh_token):
     try:
-        refresh_token = request.COOKIES.get('refresh_token')
         token = RefreshToken(refresh_token)
         user_id = token['user_id']
         return user_id
     except:
         return None
 
-def get_user_from_jwt_refresh_token_from_cookie(request):
+def get_user_id_from_jwt_refresh_token_from_request_cookie(request):
+    refresh_token = request.COOKIES.get('refresh_token')
+    if refresh_token:
+        return get_user_id_from_jwt_refresh_token(refresh_token)
+    return None
+
+def get_user_from_jwt_refresh_token_from_request_cookie(request):
     """
     Database querying, less efficient than function identify_user_from_jwt_access_token.
     Only recommended as second option.
     """
-    user_id = get_user_id_from_jwt_refresh_token(request)
-    
+    user_id = get_user_id_from_jwt_refresh_token_from_request_cookie(request)
+    return get_user_from_user_id(user_id)
+
+def get_user_from_jwt_refresh_token(refresh_token):
+    user_id = get_user_id_from_jwt_refresh_token(refresh_token)
+    return get_user_from_user_id(user_id)
+
+def get_user_from_user_id(user_id):
     if user_id == None:
-        return None
-    
+        return None    
     try:
-        user = User.objects.get(id=user_id) 
+        user = User.objects.get(id = user_id) 
+        return user
     except:
-        return None
+        return None    
 
-    return user
-
-def identify_user_from_jwt_token_from_cookie(request):
-    user = identify_user_from_jwt_access_token_from_cookie(request)
+def identify_user_from_jwt_token_from_request_cookie(request):
+    user = identify_user_from_jwt_access_token_from_request_cookie(request)
         
     if user == None:
-        user = get_user_from_jwt_refresh_token_from_cookie(request)
+        user = get_user_from_jwt_refresh_token_from_request_cookie(request)
         
+    return user
+
+def identify_user_from_jwt_access_token_and_refresh_token(access_token, refresh_token):
+    user = identify_user_from_jwt_access_token(access_token)
+        
+    if user == None:
+        user = get_user_from_jwt_refresh_token(refresh_token)
+        
+    return user
+
+def get_access_token_from_refresh_token(refresh_token):
+    try:
+        refresh_token_obj = RefreshToken(refresh_token)
+        if refresh_token_obj.is_blacklisted:
+            return None
+        access_token = AccessToken.for_user(refresh_token_obj.user) 
+        return str(access_token) 
+    except (InvalidToken, TokenError):
+        return None 
+    except Exception as e:
+        print(f"Refresh token error: {e}")
+        return None
+
+def verify_access_token(access_token):
+    if not access_token:
+        return None
+    try:
+        validated_access_token = JWTAUTH.get_validated_token(access_token)
+        return validated_access_token
+    except (InvalidToken, TokenError):
+        return None 
+    except Exception as e:
+        print(f"Token verification error: {e}")
+        return None
+
+def verify_access_token_get_user(access_token):
+    validated_access_token = verify_access_token(access_token)    
+    user = JWTAUTH.authenticate_credentials(validated_access_token)
     return user
 
 class TestUserInfoAndCookie(APIView):
@@ -326,8 +395,7 @@ class TestUserInfoAndCookie(APIView):
 
     def post(self, request, *args, **kwargs):
         
-        user = identify_user_from_jwt_token_from_cookie(request)
-
+        user = identify_user_from_jwt_token_from_request_cookie(request)
         if user == None:
             return LOGIN_EXPIRED_RESPONSE
 
@@ -341,25 +409,47 @@ class TestUserInfoAndCookie(APIView):
 
         return response
 
+def get_expire_date(hours):
+    return dttime.now(datetime.UTC) + datetime.timedelta(hours=hours)
+
+@api_view(['GET'])
+@authentication_classes([]) 
+@permission_classes([]) 
+@ensure_csrf_cookie
+def get_csrf_token(request):
+    print("Test CSRF view hit") # Check if the view is being called
+    print("CSRF Token (from request):", request.META.get('HTTP_X_CSRFTOKEN')) 
+    print("CSRF Token (from cookie):", request.COOKIES.get('csrftoken')) 
+    print("CSRF Token (from cookie):", request.COOKIES) 
+    return HttpResponse("CSRF cookie set") 
+
+@csrf_protect
+def get_csrf_token_test(request):
+    print("CSRF Token (from request):", request.META.get('HTTP_X_CSRFTOKEN')) 
+    print("CSRF Token (from cookie):", request.COOKIES.get('csrftoken')) 
+    print("CSRF Token (from cookie):", request.COOKIES) 
+    return HttpResponse("CSRF cookie set")
+
+# @method_decorator(csrf_protect, name='dispatch')
 class CustomLoginTokenAccessView(APIView):
     
     authentication_classes = [] 
     permission_classes = []
 
     def post(self, request, *args, **kwargs):
+        print("CSRF Token (from request):", request.META.get('HTTP_X_CSRFTOKEN')) 
+        print("CSRF Token (from cookie):", request.COOKIES.get('csrftoken')) 
+
         username = request.data.get('username')
         password = request.data.get('password')
+        print(username, password)
         user = authenticate(request, username=username, password=password)
-
         if not user:
             return INVALID_LOGIN_RESPONSE
-        
-        login(request, user)
         
         refresh = RefreshToken.for_user(user)
         access_token = str(refresh.access_token)
         refresh_token = str(refresh)
-
         response = JsonResponse({
             "success": True,
             "is_logged_in": True,
@@ -368,18 +458,15 @@ class CustomLoginTokenAccessView(APIView):
         response.set_cookie(
             "access_token", 
             access_token, 
-            httponly=True, 
-            secure=False, 
-            expires=dttime.now(datetime.UTC) + datetime.timedelta(hours=1),
+            **COOKIE_DEFAULTS,
+            expires=get_expire_date(1),
         )
         response.set_cookie(
             "refresh_token", 
             refresh_token, 
-            httponly=True, 
-            secure=False, 
-            expires=dttime.now(datetime.UTC) + datetime.timedelta(hours=7),
-        )
-
+            **COOKIE_DEFAULTS,
+            expires=get_expire_date(7),
+        )        
         return response
 
 class CustomLogoutTokenView(APIView):
@@ -406,6 +493,16 @@ class CustomLogoutTokenView(APIView):
             print(e)
             return Response({"detail": "An Error occured during logout.", "success": False}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+def delete_response_cookie(
+        response = Response(
+            {"is_logged_in": False, "success": False }, 
+            status=status.HTTP_200_OK
+        )
+    ):  
+    response.delete_cookie('refresh_token')
+    response.delete_cookie('access_token')
+    return response
+
 class CustomCheckLoginStateTokenView(APIView):
     authentication_classes = [JWTAuthentication] 
     permission_classes = []
@@ -414,39 +511,104 @@ class CustomCheckLoginStateTokenView(APIView):
         if not refresh_token:
             return Response({"is_logged_in": False}, status=status.HTTP_200_OK)
         try:
-            token = RefreshToken(refresh_token)
+            refresh_token = RefreshToken(refresh_token)
             return Response({"is_logged_in": True}, status=status.HTTP_200_OK)
         except InvalidToken:
-            response = Response({"is_logged_in": False}, status=status.HTTP_200_OK)
-            response.delete_cookie('refresh_token')
-            response.delete_cookie('access_token')
-            return response
+            return delete_response_cookie()
         except TokenError: 
-            response = Response({"is_logged_in": False}, status=status.HTTP_200_OK)
-            response.delete_cookie('refresh_token')
-            response.delete_cookie('access_token')
-            return response
+            return delete_response_cookie()
         except Exception as e:
             print(f"Unexpected error during login check: {e}")
-            response = Response({"is_logged_in": False}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            response.delete_cookie('refresh_token')
-            response.delete_cookie('access_token')
+            response = delete_response_cookie()
+            response.status = status.HTTP_500_INTERNAL_SERVER_ERROR
             return response
+
+REFRESH_TOKEN_MISSING_RESPONSE = Response(
+    {'success': False, "detail": "Refresh token is missing"},
+    status=status.HTTP_401_UNAUTHORIZED,
+)
+AUTHENTICATION_ERROR_RESPONSE = Response(
+    {'success': False, "detail": "Authentication failed"},
+    status=status.HTTP_401_UNAUTHORIZED,
+)
+INTERNAL_SERVER_ERROR_RESPONSE = Response(
+    {'success': False, "detail": "Internal server error"},
+    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+)
+
+def generate_access_token(refresh_token_obj):
+    try:
+        return AccessToken.for_user(refresh_token_obj.user)
+    except Exception as e:
+        print(f"Error generating access token: {e}")
+        return None
+
+class AccessJWToken(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = []
+
+    def get(self, request, *args, **kwargs):
+        refresh_token = request.COOKIES.get('refresh_token')
+        access_token_cookie = request.COOKIES.get('access_token')
+
+        if not refresh_token:
+            response = delete_response_cookie(response=REFRESH_TOKEN_MISSING_RESPONSE)
+            return response            
+        try:
+            refresh_token_obj = RefreshToken(refresh_token)
+            if access_token_cookie:
+                try:
+                    AccessToken(access_token_cookie)
+                    access_token = access_token_cookie
+                except (InvalidToken, TokenError):
+                    access_token = generate_access_token(refresh_token_obj)
+            else:
+                access_token = generate_access_token(refresh_token_obj)
+
+            if not access_token:
+                return delete_response_cookie(response = AUTHENTICATION_ERROR_RESPONSE)
+            
+            return Response({ 
+                    'access_token': str(access_token),
+                    'success': True
+                }, 
+                status=status.HTTP_200_OK
+            )
+        except (InvalidToken, TokenError):
+            return delete_response_cookie(response = AUTHENTICATION_ERROR_RESPONSE)
+        except Exception as e:
+            print(f'Error during refresh token: {e}')
+            response = delete_response_cookie(response = INTERNAL_SERVER_ERROR_RESPONSE)
+            return response
+
+class MyPublicAPIView(APIView):
+    authentication_classes = [] 
+    permission_classes = [AllowAny]
     
-def empty_default_authentication_classes_and_permission_classes(view_func):
+def empty_default_authentication_classes_and_permission_classes(api_func):
     @authentication_classes([]) 
     @permission_classes([]) 
-    def wrapped_view(request, *args, **kwargs):
-        return view_func(request, *args, **kwargs)
-    return wrapped_view
+    def wrapped_func(request, *args, **kwargs):
+        return api_func(request, *args, **kwargs)
+    return wrapped_func
+
+def jwt_authentication(api_func, return_response=AUTHENTICATION_REQUIRED_RESPONSE):
+    @authentication_classes([]) 
+    @permission_classes([]) 
+    def wrapped_func(request, *args, **kwargs):
+        user = identify_user_from_jwt_token_from_request_cookie(request)
+        if not user:
+            return return_response
+        request.user = user
+        return api_func(request, *args, **kwargs)
+    return wrapped_func
 
 @api_view(['GET'])
 @authentication_classes([]) 
 @permission_classes([]) 
 def model_list_user(request, format=None):
     if request.method == 'GET':
-        user = identify_user_from_jwt_token_from_cookie(request)
-
+        user = identify_user_from_jwt_token_from_request_cookie(request)
         if user == None:
             return Response(get_model_list().data)
 
@@ -464,8 +626,7 @@ def model_list_user(request, format=None):
 @permission_classes([]) 
 def dataset_list_user(request, format=None):
     if request.method == 'GET':
-        user = identify_user_from_jwt_token_from_cookie(request)
-
+        user = identify_user_from_jwt_token_from_request_cookie(request)
         if user == None:
             return Response(get_dataset_list().data)
             
@@ -479,27 +640,20 @@ def dataset_list_user(request, format=None):
     return ONLY_GET_REQUEST_RESPONSE
 
 @api_view(['GET'])
-@empty_default_authentication_classes_and_permission_classes
+@jwt_authentication
 def user_profile(request, format=None):
     if request.method == 'GET':
-        user = identify_user_from_jwt_token_from_cookie(request)
-        
-        if user == None: 
-            return LOGIN_EXPIRED_RESPONSE
-        
+        user = request.user        
         serializer = UserSerializer_(user, many=False, context={'request': request})
         return Response(serializer.data)
         
     return ONLY_GET_REQUEST_RESPONSE
 
 @api_view(['GET'])
-@empty_default_authentication_classes_and_permission_classes
+@jwt_authentication
 def user_login_check(request, format=None):    
     if request.method == 'GET':
-        user = identify_user_from_jwt_token_from_cookie(request)
-
-        if user == None:
-            return LOGIN_EXPIRED_RESPONSE
+        user = request.user
 
         if user != None:
             return Response({
@@ -511,34 +665,55 @@ def user_login_check(request, format=None):
     return ONLY_GET_REQUEST_RESPONSE
 
 @api_view(['GET'])
-@empty_default_authentication_classes_and_permission_classes
+@jwt_authentication
 def user_private_models(request, format=None):
-    
-    if request.method == 'GET':        
-        user = identify_user_from_jwt_token_from_cookie(request)
-        
-        if user == None:
-            return LOGIN_EXPIRED_RESPONSE
-
-        models = Model.objects.filter(is_public=False, user=user)[:10]
-        serializer = ModelSerializer(models, many=True)
-        return Response(serializer.data)
-    
-    return ONLY_GET_REQUEST_RESPONSE        
+    return user_private_datasets(request, Object=Model, Serializer=ModelSerializer, objects_filter={'is_public': False}, namespace = 'model_', format=format)
 
 @api_view(['GET'])
-@empty_default_authentication_classes_and_permission_classes
-def user_private_datasets(request, format=None):
-    
-    if request.method == 'GET':        
-        user = identify_user_from_jwt_token_from_cookie(request)
-        
-        if user == None:
-            return LOGIN_EXPIRED_RESPONSE
+@jwt_authentication
+def user_models(request, format=None):
+    return user_private_datasets(request, Object=Model, Serializer=ModelSerializer, objects_filter={}, namespace = 'model_', format=format)
 
-        datasets = Dataset.objects.filter(is_public=False, user=user)[:10]
-        serializer = DatasetSerializer(datasets, many=True)
-        return Response(serializer.data)
+@api_view(['GET'])
+@jwt_authentication
+def user_private_datasets_api(request, format=None):
+    return user_private_datasets(request, Object=Dataset, Serializer=DatasetSerializer, objects_filter={'is_public': False}, namespace = 'dataset_', format=format)
+
+@api_view(['GET'])
+@jwt_authentication
+def user_datasets_api(request, format=None):
+    return user_private_datasets(request, Object=Dataset, Serializer=DatasetSerializer, objects_filter={}, namespace = 'dataset_', format=format)
+
+def user_private_datasets(
+    request, 
+    Object=Dataset, 
+    Serializer=DatasetSerializer, 
+    objects_filter = {'is_public': False}, 
+    namespace = 'dataset_',
+    format = None
+):
+    if request.method == 'GET':        
+        user = request.user 
+        
+        per_page = request.GET.get("per_page", 10)
+        per_page = request.GET.get(f"{namespace}per_page", per_page)
+
+        datasets = Object.objects.filter(**objects_filter, user=user)
+        serializer_data = Serializer(datasets, many=True).data
+        
+        page_num = request.GET.get(f"page", 1)
+        page_num = request.GET.get(f"{namespace}page", page_num)
+        page = get_paginator_page(serializer_data, page_num, per_page)
+
+        return Response({
+            'user': str(user),
+            'page_number': page.number,
+            'list': page.object_list,
+            'total_list_count': page.paginator.count,
+            'paginator_num_pages': page.paginator.num_pages,
+            'page_has_next': page.has_next(),
+            'page_has_previous': page.has_previous(),
+        })
     
     return ONLY_GET_REQUEST_RESPONSE
 
@@ -570,30 +745,6 @@ def save_zip_file(zipfile, timestamp: str, extension: str ='.zip', root_dir: str
 
     FileSystemStorage(location=root_dir).save(save_filename, zipfile)     
     return zipfile_dir
-
-@api_view(['POST'])
-def login_api(request):
-    body = request.body
-    data = json.loads(body)
-
-    username = data["username"]
-    password = data["password"]
-    user = authenticate(request, username=username, password=password)
-    
-    response_data = {
-        "username": username, 
-    }
-
-    request.session._get_or_create_session_key()
-    
-    if user is not None or request.user.is_authenticated:
-        login(request, user)
-        response_data['is_authenticated'] = True
-        token, created = Token.objects.get_or_create(user=user)
-        response_data["token"] = token
-        return JsonResponse(response_data)
-    
-    return JsonResponse(response_data)
 
 @csrf_exempt
 def get_models_api(request):
@@ -742,12 +893,9 @@ def get_model_form_data(request, namespace = '', type_namespace = 'model_', zipf
     return name, model_type, is_public, description, model_zipfile
 
 @api_view(['POST'])
-@authentication_classes([]) 
-@permission_classes([]) 
+@jwt_authentication
 def model_form_post(request, format=None):
-    user = identify_user_from_jwt_token_from_cookie(request)
-    if user == None:
-        return LOGIN_EXPIRED_RESPONSE
+    user = request.user   
     
     user, response = identify_user_from_jwt_token_from_cookie_with_response(request)
     if response: return response
@@ -781,12 +929,9 @@ def get_file_extension(file_path):
     return ""
 
 @api_view(['POST'])
-@authentication_classes([]) 
-@permission_classes([]) 
+@jwt_authentication
 def dataset_form_post(request, format=None):
-    user = identify_user_from_jwt_token_from_cookie(request)
-    if user == None:
-        return LOGIN_EXPIRED_RESPONSE
+    user = request.user
 
     name, is_public, description, dataset_zipfile = get_dataset_form_data(request)
     
@@ -803,8 +948,19 @@ def dataset_form_post(request, format=None):
 
     return SUCCESSFUL_ZIP_FILE_UPLOAD_RESPONSE
 
-def user_and_public_objects_pages(request, object=Model, objectSerializer=ModelSerializer, namespace='model_'):
-    user = identify_user_from_jwt_token_from_cookie(request)
+def get_paginator_page(object_list, page_num, per_page):
+    paginator = Paginator(object_list, per_page)
+    page = paginator.get_page(page_num)
+    return page
+
+def user_and_public_objects_pages(
+        request, 
+        object=Model, 
+        objectSerializer=ModelSerializer, 
+        namespace='model_', 
+        per_page=2, 
+    ):
+    user = identify_user_from_jwt_token_from_request_cookie(request)
     objects = []
     
     if user == None:
@@ -816,11 +972,10 @@ def user_and_public_objects_pages(request, object=Model, objectSerializer=ModelS
     serializer = objectSerializer(objects, many=True)
     serializer_data = serializer.data
 
-    per_page = request.GET.get("per_page", 2)
+    per_page = request.GET.get("per_page", per_page)
     per_page = request.GET.get(f"{namespace}per_page", per_page)
-    paginator = Paginator(serializer_data, per_page)
     page_num = request.GET.get(f"{namespace}page")
-    page = paginator.get_page(page_num)
+    page = get_paginator_page(serializer_data, page_num, per_page)
 
     return Response({
         'user': str(user),
@@ -880,7 +1035,7 @@ def test_page_range(request):
     })
 
 def datasets_page_range_function(request, Object=Dataset, Serializer=DatasetSerializer):
-    user = identify_user_from_jwt_token_from_cookie(request)
+    user = identify_user_from_jwt_token_from_request_cookie(request)
     queryset = []
 
     if user == None:
@@ -933,7 +1088,7 @@ def user_and_public_datasets_pages(request):
 @api_view(['GET', 'POST'])
 @empty_default_authentication_classes_and_permission_classes
 def search_model_by_name(request):
-    user = identify_user_from_jwt_token_from_cookie(request)
+    user = identify_user_from_jwt_token_from_request_cookie(request)
    
     models = []
     q = request.GET.get("query")
@@ -979,7 +1134,7 @@ class DatasetDetail(APIView):
     permission_classes = []
 
     def get(self, request, id):
-        user = identify_user_from_jwt_token_from_cookie(request)
+        user = identify_user_from_jwt_token_from_request_cookie(request)
         try:
             dataset = Dataset.objects.get(id=id)            
             if dataset and (not dataset.is_public) and dataset.user != user:
@@ -995,8 +1150,7 @@ class DatasetDetail(APIView):
         return Response(serializer_data)
     
     def delete(self, request, id):
-        user = identify_user_from_jwt_token_from_cookie(request)
-        
+        user = identify_user_from_jwt_token_from_request_cookie(request)
         if user == None:
             return Response({'success': False, 'message': 'Please login to delete your dataset.'})
 
@@ -1016,7 +1170,7 @@ class ModelDetail(APIView):
     permission_classes = []
 
     def get(self, request, id):
-        user = identify_user_from_jwt_token_from_cookie(request)
+        user = identify_user_from_jwt_token_from_request_cookie(request)
 
         try:
             model = Model.objects.get(id=id)
@@ -1032,8 +1186,7 @@ class ModelDetail(APIView):
         return Response(serializer_data)
     
     def delete(self, request, id):
-        user = identify_user_from_jwt_token_from_cookie(request)
-        
+        user = identify_user_from_jwt_token_from_request_cookie(request)        
         if user == None:
             return Response({'success': False, 'message': 'Please login to delete your model.'})
 
@@ -1089,10 +1242,10 @@ def obj_and_is_not_public_and_not_owner(obj, user):
 
 def check_obj_exist_and_user_has_access_permission(obj, user):
     if not obj:
-        return NOT_FOUND_INVALID_QUERY_OR_DELETED_RECORD_JSON_RESPONSE
+        return NOT_FOUND_INVALID_QUERY_OR_DELETED_RECORD_RESPONSE
     
     if obj_and_is_not_public_and_not_owner(obj, user):       
-        return NO_ACCESS_PERMISSION_JSON_RESPONSE
+        return NO_ACCESS_PERMISSION_RESPONSE
     
     return None
 
@@ -1100,7 +1253,7 @@ def remove_temp_path(path: str):
     os.remove(path)
 
 def download_obj_zip(request, id, Obj, get_obj_directory: Callable):
-    user = identify_user_from_jwt_token_from_cookie(request)
+    user = identify_user_from_jwt_token_from_request_cookie(request)
     try:
         obj = Obj.objects.get(id=id)
     except Obj.DoesNotExist:
@@ -1179,7 +1332,7 @@ def download_zip_stream(request, id):
     """
     Streaming for large size data
     """
-    user = identify_user_from_jwt_token_from_cookie(request)
+    user = identify_user_from_jwt_token_from_request_cookie(request)
     
     try:
         dataset = Dataset.objects.get(id=id)
@@ -1242,10 +1395,11 @@ def get_dataset_image_api(request, user_id, dataset_name, image_path):
     return get_dataset_image(request, user_id, dataset_name, image_path)
 
 def get_dataset_image(request, user_id, dataset_name, image_path, Object=Dataset, lookup_key='dataset_directory', get_unique_directory=get_unique_dataset_directory):
-    dataset_directory = get_unique_directory(str(user_id), dataset_name)    
+    print(' - get_dataset_image ')
+    dataset_directory = get_unique_directory(str(user_id), dataset_name)
     file_path_ = f"{dataset_directory}/{image_path}"
     file_path = file_path_.rstrip('/')
-    user = identify_user_from_jwt_token_from_cookie(request)
+    user = identify_user_from_jwt_token_from_request_cookie(request)
     content_type = ''
     file_read_type = 'rb'
     formatfunction = passfunc
@@ -1292,23 +1446,24 @@ def get_dataset_image(request, user_id, dataset_name, image_path, Object=Dataset
 @api_view(['GET'])
 @empty_default_authentication_classes_and_permission_classes
 def get_model_image(request, user_id, model_name, image_path):
+    print(' - get_model_image ')
     return get_dataset_image(request, user_id, model_name, image_path, Object=Model, lookup_key='model_directory', get_unique_directory=get_unique_model_directory)
 
 def get_dataset_file_tree(request, user_id, dataset_name, path, Object=Dataset, root_dir=ROOT_DATASET_DIR, lookup_key='dataset_directory'):
-    print(' get_dataset_file_tree ')
+    print(' - get_dataset_file_tree ')
     dataset_base_directory = get_unique_dataset_directory(str(user_id), dataset_name, root_dir=root_dir)
     dataset_directory = os.path.join(dataset_base_directory, path)
-    user = identify_user_from_jwt_token_from_cookie(request)
+    user = identify_user_from_jwt_token_from_request_cookie(request)
     if not os.path.exists(dataset_directory) or not os.path.isdir(dataset_directory):
         return JsonResponse({"error": "Invalid directory path"}, status=400)
     
     dataset = Object.objects.get(**{lookup_key: dataset_base_directory})
 
     if not dataset:
-        return NOT_FOUND_INVALID_QUERY_OR_DELETED_RECORD_JSON_RESPONSE
+        return NOT_FOUND_INVALID_QUERY_OR_DELETED_RECORD_RESPONSE
     
     if dataset and not dataset.is_public and dataset.user != user:
-        return NO_ACCESS_PERMISSION_JSON_RESPONSE
+        return NO_ACCESS_PERMISSION_RESPONSE
 
     try:
         files_and_dirs = os.listdir(dataset_directory)
@@ -1336,13 +1491,14 @@ def find_file_path_for_two_tree_levels(directory, name_end):
     return
 
 def get_csv_data(request):
+    print(' - get_csv_data ')
     csv_path = request.path.replace('/api/dataset/', '')
     csv_path = f"{ROOT_DATASET_DIR}{csv_path}"
 
     if not csv_path.endswith('.csv'):
         return HttpResponse("Path must end with '.csv'.", status=404)
     
-    user = identify_user_from_jwt_token_from_cookie(request)    
+    user = identify_user_from_jwt_token_from_request_cookie(request)    
     
     dataset_base_directory = csv_path.replace('/.csv', '')
     
@@ -1372,41 +1528,96 @@ def get_csv_data(request):
         return HttpResponse(f"An error occurred: {e}", status=500)
 
 @api_view(['POST'])
-@empty_default_authentication_classes_and_permission_classes
+@jwt_authentication
 def fork_model_api(request):
+    model_type = request.POST.get('model_type')
+    return fork_object_handle(request, object_type='model', model_type=model_type)
 
-    return SUCCESS_JSON_RESPONSE
+@api_view(['POST'])
+@jwt_authentication
+def fork_dataset_api(request):
+    return fork_object_handle(request, object_type='dataset', model_type=None)
+
+def fork_object_handle(request, object_type='dataset', model_type=None):
+    user = request.user
+    
+    object_id = request.POST.get(f'{object_type}_id')
+    object_name = request.POST.get('name', '')
+    is_public = request.POST.get('is_public', True)
+    description = request.POST.get('description', '')
+    try:
+        if model_type:
+            model = fork_model(object_id, user, object_name, model_type, is_public, description=description)
+            if not model:                
+                return JsonResponse({
+                    'success': False, 
+                    'message': 'Failed to fork.'
+                })        
+        else:
+            fork_dataset(object_id, user, object_name, is_public, description=description)
+    except Exception as e:
+        return JsonResponse({
+            'success': False, 
+            'message': 'Failed to fork.'
+        })
+    return SUCCESS_RESPONSE 
 
 @api_view(['POST'])
 @empty_default_authentication_classes_and_permission_classes
-def fork_dataset_api(request):
-    user = identify_user_from_jwt_token_from_cookie(request)    
-    print(user)
-    if not user:
-        return AUTHENTICATION_REQUIRED_JSON_RESPONSE
-    
-    dataset_id = request.POST.get('dataset_id')
-    dataset_name = request.POST.get('name')
-    ispublic = request.POST.get('is_public')
-    description = request.POST.get('description')
+def apply_action_dataset(request):
+    return apply_action_dataset_function(request)
 
-    fork_dataset(dataset_id, user, dataset_name, ispublic, description=description)
-    return SUCCESS_JSON_RESPONSE
+def apply_action_dataset_function(request):
+    object_type = 'dataset'
+    action_type = request.POST.get(f'action_type')
+    object_id = request.POST.get(f'{object_type}_id')
+    print(action_type, object_id)
+
+    return SUCCESS_RESPONSE
+
+@api_view(['POST'])
+@jwt_authentication
+def relate_a_model_dataset(request):
+    user = request.user
+    
+    model_id = request.POST.get('model_id')
+    dataset_id = request.POST.get('dataset_id')
+    model = Model.objects.get(id=model_id)
+    dataset = Dataset.objects.get(id=dataset_id)
+    try:
+        model_dataset = ModelDataset(model=model, dataset=dataset)
+        model_dataset.save()
+    except IntegrityError as e: 
+        if 'unique constraint' in e.message:
+            return JsonResponse({'success': False, 'message': 'Model-Dataset relationship already exists.'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': 'Failed to relate a Model-Dataset.'}) 
+
+    return SUCCESS_RESPONSE
+
+@api_view(['GET'])
+@jwt_authentication
+def create_and_get_task_id(request):
+    task_name = request.GET.get('task_name', '')
+    try:
+        task = Task(task_name=task_name)
+        task.save()
+        task.task_name = f'task {task.id}'
+        task.save()
+    except Exception as e:
+        JsonResponse({'success': False, 'message': 'Failed to create a Task'}) 
+    return JsonResponse({'success': True, 'task_id': task.id}) 
 
 def store_temporary_file(file, filename='afile', base_tmp_dir="tmp/", file_extension=''):
     handle_uploaded_file(file, filename=filename, dir=base_tmp_dir, file_extension=file_extension)
     return os.path.join(base_tmp_dir, f"{filename}{file_extension}")
 
 @api_view(['POST'])
-@empty_default_authentication_classes_and_permission_classes
+@jwt_authentication
 def save_dataset_file_to_minio_api(request):
     return save_dataset_file_to_minio(request)
 
 def save_dataset_file_to_minio(request, pathbase='dataset/'):
-    user = identify_user_from_jwt_token_from_cookie(request)
-    if not user:
-        return AUTHENTICATION_REQUIRED_JSON_RESPONSE
-    
     namespace = ''
     dataset_name = 'data'
     file = request.FILES.get(f'{namespace}{dataset_name}')
@@ -1419,11 +1630,12 @@ def save_dataset_file_to_minio(request, pathbase='dataset/'):
     source_file = temp_dir
     object_name = f'{pathbase}{sanitized_filename}'
     minio_service.save_file_as_object(object_name, source_file)
-    return SUCCESS_JSON_RESPONSE
+    return SUCCESS_RESPONSE
 
 @api_view(['GET'])
 @empty_default_authentication_classes_and_permission_classes
 def read_dataset_from_minio(request, id):
+    print(' - read_dataset_from_minio ')
     dataset, response = Dataset_get(id)
     if response: return response
     user, response = identify_user_from_cookie_jwt_token_and_check_obj_user_access_permission(request, dataset)
@@ -1472,15 +1684,15 @@ def Dataset_filter(condition):
         return None, DATASET_NOT_FOUND_INVALID_ID_OR_DELETED_RECORD_RESPONSE
 
 def identify_user_from_jwt_token_from_cookie_with_response(request):
-    user = identify_user_from_jwt_token_from_cookie(request)
+    user = identify_user_from_jwt_token_from_request_cookie(request)
     if user == None:
-        return None, AUTHENTICATION_REQUIRED_JSON_RESPONSE
+        return None, AUTHENTICATION_REQUIRED_RESPONSE
     return user, None
 
 def identify_user_from_cookie_jwt_token_and_check_obj_user_access_permission(request, dataset):
-    user = identify_user_from_jwt_token_from_cookie(request)
+    user = identify_user_from_jwt_token_from_request_cookie(request)
     if user == None:
-        return None, AUTHENTICATION_REQUIRED_JSON_RESPONSE
+        return None, AUTHENTICATION_REQUIRED_RESPONSE
     response = check_obj_exist_and_user_has_access_permission(dataset, user)
     return user, response
 
@@ -1533,7 +1745,7 @@ def update_dataset_file_in_minio(request, id, pathbase='dataset/'):
     temp_dir = store_temporary_file(file, filename = object_name)
     source_file = temp_dir
     minio_service.save_file_as_object(object_name, source_file)
-    return SUCCESS_JSON_RESPONSE
+    return SUCCESS_RESPONSE
 
 @api_view(['GET'])
 @empty_default_authentication_classes_and_permission_classes
@@ -1546,11 +1758,45 @@ def read_file_from_minio_test(request):
     response['Content-Disposition'] = f'attachment; filename="my_image.jpg"'
     return response
 
+def make_user_directories(user_id: str):
+    for root_directory in [ROOT_DATASET_DIR, ROOT_MODEL_DIR]:        
+        os.makedirs(os.path.join(root_directory, user_id), exist_ok=True)
+
+@api_view(['POST'])
+@empty_default_authentication_classes_and_permission_classes
+def signup(request):
+    try:
+        data = request.data
+        username = data.get("username")
+        email = data.get("email")
+        print(username, email)
+
+        if User.objects.filter(username=username).exists() or User.objects.filter(email=email).exists():
+            print(username, email, "username or email already exists")
+            return JsonResponse({
+                "message": "Username or email already exists.", 
+                "success": False
+            })
+        
+        password = data.get("password")
+        
+        print(username, email, password)
+
+        user = User.objects.create_user(username, email, password)
+        user.save()
+
+        make_user_directories(str(user.id))
+    except Exception as e:
+        print(username, email, str(e))
+        return Response({"message": str(e), "success": False}, status=400) # Handle exceptions
+
+    return SUCCESS_RESPONSE
+
 @api_view(['GET'])
 @empty_default_authentication_classes_and_permission_classes
 def temp(request):
     delete_all_datasets_in_minio()
-    return SUCCESS_JSON_RESPONSE
+    return SUCCESS_RESPONSE
 
 def upload_all_datasets_to_minio(local_dir=ROOT_MODEL_DIR, base_root='model'):
     """ Developer tool."""
@@ -1560,7 +1806,7 @@ def upload_all_datasets_to_minio(local_dir=ROOT_MODEL_DIR, base_root='model'):
             object_name = os.path.relpath(local_file_path, local_dir)
             object_name = os.path.join(base_root, object_name)
             minio_service.save_file_as_object(object_name, local_file_path)
-    return SUCCESS_JSON_RESPONSE
+    return SUCCESS_RESPONSE
 
 def delete_all_django_datasets_in_minio(local_dir=ROOT_DATASET_DIR, base_root='dataset'):
     # TODO remove all datasets and models in minio and upload_all_datasets_to_minio again.
@@ -1570,7 +1816,7 @@ def delete_all_django_datasets_in_minio(local_dir=ROOT_DATASET_DIR, base_root='d
             local_file_path = os.path.join(root, file)
             object_name = os.path.relpath(local_file_path, local_dir)
             minio_service.delete_all_object_versions(object_name)
-    return SUCCESS_JSON_RESPONSE
+    return SUCCESS_RESPONSE
 
 def delete_all_datasets_in_minio(local_dir=ROOT_DATASET_DIR, base_root='dataset'):
     """ Developer tool."""
@@ -1582,7 +1828,7 @@ def delete_all_datasets_in_minio(local_dir=ROOT_DATASET_DIR, base_root='dataset'
             # object_name = os.path.relpath(local_file_path, local_dir)
             print(local_file_path, local_dir)
             # minio_service.delete_all_object_versions(object_name)
-    return SUCCESS_JSON_RESPONSE
+    return SUCCESS_RESPONSE
 
 def move_all_datasets_directory():
     """Developer tool."""
