@@ -12,86 +12,69 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 from pathlib import Path
 import os
+from os import getenv, path
+import dotenv
+from django.core.management.utils import get_random_secret_key
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-ASSET_DIR = 'asset/'
-ROOT_DATASET_DIR = 'asset/dataset/'
-ROOT_MODEL_DIR = 'asset/model/'
-ROOT_TEMP = 'asset/temp/test'
+dotenv_file = BASE_DIR / '.env.local'
 
-PUBLIC_DATASET_ROOT = os.path.join(BASE_DIR, 'asset/user/dataset/public/')
-PUBLIC_DATASET_DIR = '/public/'
+if path.isfile(dotenv_file):
+    dotenv.load_dotenv(dotenv_file)
+
+
+ASSET_DIR = getenv("ASSET_DIR")
+ROOT_DATASET_DIR = getenv("ROOT_DATASET_DIR")
+ROOT_MODEL_DIR = getenv("ROOT_MODEL_DIR")
+ROOT_TEMP = getenv("ROOT_TEMP")
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-r5ff0vy5@mn87v_svblz6p#1y546e(j6zg7r_r5tltov2)=0hi'
-MINIO_ACCESS_KEY = "wSEcMRT9rj2Jzcj7BBOp"
-MINIO_SECRET_KEY = "ypCUmae6Sx1fbQIcLubx5G4TqlyPQixKperd3juG"
-MINIO_BUCKET1_ADDR = "bucket1"
+SECRET_KEY = getenv("DJANGO_SECRET_KEY", get_random_secret_key())
+MINIO_ACCESS_KEY = getenv("MINIO_ACCESS_KEY")
+MINIO_SECRET_KEY = getenv("MINIO_SECRET_KEY")
+MINIO_BUCKET1_ADDR = getenv("MINIO_BUCKET1_ADDR")
 
-MINIO_API_ADDRESSES = [
-    "http://10.144.127.231:9000",
-    "http://10.154.6.97:9000",
-    "http://100.75.219.92:9000",
-    "http://127.0.0.1:9000"
-]
+MINIO_API_ADDRESSES = getenv("MINIO_API_ADDRESSES").split(',')
 
-MINIO_API_ADDR = "10.144.127.231:9000"
+MINIO_API_ADDR = getenv("MINIO_API_ADDR")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = getenv('DEBUG', 'False') == True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = getenv('DJANGO_ALLOWED_HOSTS').split(',')
 
 LOGIN_REDIRECT_URL = '/polls/login-view'
 
 # API REST definition
 
-REST_FRAMEWORK = {
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 2,
-    'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ),
-    'DEFAULT_PERMISSION_CLASSES': (
-        'rest_framework.permissions.IsAuthenticated',  # Default permissions
-    ),
-}
-
-CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_CREDENTIALS = True 
 
 CORS_ALLOW_HEADERS = [
     'Content-Disposition',
     'content-type',
     'Connection',
+    'x-csrftoken',
+    'X-CSRFToken',
+    'authorization',
+    'mode',
 ]
 
 CORS_EXPOSE_HEADERS = [
     'Content-Disposition', 
 ]
 
-CORS_ALLOWED_ORIGINS = [
-    "http://127.0.0.1:3002",
-    "http://localhost:3002",
-]
-CSRF_COOKIE_DOMAIN = '127.0.0.1'
-CSRF_COOKIE_NAME = 'csrf_token'
+CORS_ALLOWED_ORIGINS = getenv('CORS_ALLOWED_ORIGINS').split(',')
+
 CSRF_COOKIE_PATH = "/"
-CSRF_HEADER_NAME = "HTTP_X_CSRFTOKEN"
-CSRF_USE_SESSIONS = True
-CSRF_TRUSTED_ORIGINS = [
-    'http://127.0.0.1:8000',
-    'https://127.0.0.1:8000',
-    'https://localhost:8000',
-    'http://localhost:8000',
-    "http://localhost:3002",
-]
-SESSION_COOKIE_SAMESITE = 'None'
-CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_TRUSTED_ORIGINS = getenv('CSRF_TRUSTED_ORIGINS').split(',')
+
+SESSION_COOKIE_SAMESITE = 'Strict' # 'Strict' for production, same for CSRF_COOKIE_SAMESITE
+CSRF_COOKIE_SAMESITE = 'Strict' 
 
 CORS_ALLOW_METHODS = [
     "GET",
@@ -106,19 +89,19 @@ SESSION_COOKIE_AGE = 43200  # 60×60×1 = 1 hour
 
 # Enable these three only when using HTTPS
 SECURE_SSL_REDIRECT = False
-# Enable these two below only when accessing admin website
-SESSION_COOKIE_SECURE = True
+# Enable these two below only when accessing admin website # Set both to False for development with HTTP
+SESSION_COOKIE_SECURE = False
 CSRF_COOKIE_SECURE = True
 
+CSRF_USE_SESSIONS = False
+# Choose either above or below but NOT both - CSRF is not set in the cookie but session_id is when Enabling both, causing issue.
 CSRF_COOKIE_HTTPONLY = True
+
 SESSION_COOKIE_HTTPONLY = True
 
 # Application definition
 
 INSTALLED_APPS = [
-    'rest_framework',
-    'rest_framework.authtoken',
-    "corsheaders",
     "django.contrib.postgres",
     'django.contrib.humanize',
     "polls.apps.PollsConfig",
@@ -128,14 +111,32 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    'rest_framework',
+    'rest_framework.authtoken',
+    "corsheaders",
     "channels",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist"
 ]
 
+# API REST definition
+
+REST_FRAMEWORK = {
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 2,
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        # 'rest_framework.authentication.TokenAuthentication',
+    ),
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticated',
+    ),
+}
+
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -143,7 +144,6 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
-
 
 ROOT_URLCONF = 'ku_djangoo.urls' 
 
@@ -174,8 +174,8 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql_psycopg2',
         'NAME': 'template1', 
-        'USER': 'postgres',
-        'PASSWORD': 'ku202425',
+        'USER': getenv('POSTGRES_USER'),
+        'PASSWORD': getenv('POSTGRES_PASSWORD'),
         'HOST': '0.0.0.0',      # 127.0.0.1 # 0.0.0.0 # 192.168.122.1
         'PORT': '5432',                 # 24
     }
@@ -221,11 +221,18 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 STATICFILES_DIRS = [
-    BASE_DIR / 'static'
+    os.path.join(BASE_DIR, 'static', 'dataset'),
+    os.path.join(BASE_DIR, 'static', 'model'),    
 ]
+STATIC_ROOT = os.path.join(BASE_DIR, 'static')
+STATIC_ROOT_DATASET = os.path.join(BASE_DIR, 'static', 'dataset')
+STATIC_ROOT_MODEL = os.path.join(BASE_DIR, 'static', 'model')
 
-STATIC_ROOT_DATASET = os.path.join(BASE_DIR, 'dataset')
-STATIC_ROOT_MODEL = os.path.join(BASE_DIR, 'model')
+STORAGES = {
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field

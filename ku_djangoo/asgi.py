@@ -55,11 +55,16 @@ application = ProtocolTypeRouter({
             path('api/dataset/image/action-progress-action-d', ProgressConsumerActionD.as_asgi()),
             path('api/dataset/image/action-progress-action-e', ProgressConsumerActionE.as_asgi()),
             path('api/dataset/image/action-progress-csv', ProgressConsumerCsv.as_asgi()),
+            path('api/model/image/test-async-file-stream-json/action-a', AActionResponseWebSocketConsumer.as_asgi()),
+            path('api/model/image/action-progress-action-a', ProgressConsumerActionA.as_asgi()),
+            path('api/model/image/action-progress-action-b', ProgressConsumerActionB.as_asgi()),
+            path('api/model/image/action-progress-action-c', ProgressConsumerActionC.as_asgi()),
         ])
     ),
 })
 
 async def test_async_stream_view(request):
+    print(' test_async_stream_view ')
     async def event_stream():
         yield 'data: {"step": 1, "status": "Processing dataset"}\n\n'
         await asyncio.sleep(2)
@@ -76,6 +81,7 @@ async def test_async_stream_view(request):
     return response
 
 async def test_async_file_streaming(request):
+    print(' test_async_file_streaming ')
     async def file_stream():
         try:
             yield f'data: {{"step": 1, "status": "Preparing file data"}}\n\n'

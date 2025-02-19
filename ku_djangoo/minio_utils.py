@@ -118,14 +118,13 @@ class MinioService:
             self.minio_client.stat_object(bucket, object_name)
 
             data = self.minio_client.get_object(bucket, object_name)
-            file_content = data.read()
+            file_content_bytes = data.read()
 
             try:
-                text_content = file_content.decode('utf-8')
+                text_content = file_content_bytes.decode('utf-8')
                 return text_content
             except UnicodeDecodeError:
-                "Return as bytes."
-                return file_content 
+                return file_content_bytes 
             finally:
                 data.close()
                 data.release_conn()

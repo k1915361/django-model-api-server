@@ -52,7 +52,7 @@ code /etc/postgresql/16/main/postgresql.conf
 # Note: '*' will allow all available IP interfaces (IPv4 and IPv6), to only listen for IPv4 set 0.0.0.0 while '::' allows listening for all IPv6 addresses.
 
 sudo -u postgres psql template1
-ALTER USER postgres with encrypted password 'ku202425';
+ALTER USER postgres with encrypted password 'mypassword';
 # ctrl + z  to exit
 
 # edit file to use scram-sha-256 authentication with the postgres user
@@ -88,20 +88,13 @@ python3.11 -m manage makemigrations polls
 python manage.py sqlmigrate polls 0004
 python manage.py sqlmigrate polls 0005
 python manage.py sqlmigrate polls 0006
-python manage.py sqlmigrate polls 0007
-python manage.py sqlmigrate polls 0008
-python manage.py sqlmigrate polls 0009
-python manage.py sqlmigrate polls 0010
-python manage.py sqlmigrate polls 0011
-python manage.py sqlmigrate polls 0012
+# ...
 python manage.py sqlmigrate polls 0013
 python3.11 -m manage sqlmigrate polls 0014
 python3.11 -m manage sqlmigrate polls 0015
 python3.11 -m manage sqlmigrate polls 0016
-python3.11 -m manage sqlmigrate polls 0017
-python3.11 -m manage sqlmigrate polls 0018
-python3.11 -m manage sqlmigrate polls 0019
-python3.11 -m manage sqlmigrate polls 0020
+# ...
+python3.11 -m manage sqlmigrate polls 0024
 
 python manage.py migrate
 # or
@@ -965,6 +958,8 @@ urlpatterns = [
 
 Usage and verify
 
+Change `http` to `https` if Django is running on `https`.
+
 ```sh
 curl \
   -X POST \
@@ -1040,6 +1035,63 @@ curl \
 # -v: debug - optional.
 ```
 
+## Resolving Chrome cross-site set-cookie issue
+
+This set-cookie was blocked because it has the samesite=lax attribute but come from cross-site response witch was not the response to top-level navigation.
+
+1. Adding proxy on NextJS project.
+
+```js
+// inside NextJs project
+// next.config.js
+module.exports = {
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: 'http://localhost:8000/:path*', // Your Django backend
+      },
+    ];
+  },
+};
+```
+
+2. Django server side: Setting up response cookie with `samesite='Lax'` and `path='/'`. 
+
+```py
+response.set_cookie(
+    "access_token", 
+    access_token, 
+    httponly=True, 
+    secure=False, 
+    samesite='Lax',
+    expires=dttime.now(datetime.UTC) + datetime.timedelta(hours=1),
+    path='/',
+)
+response.set_cookie(
+    "refresh_token", 
+    refresh_token, 
+    httponly=True, 
+    secure=False, 
+    samesite='Lax',
+    expires=dttime.now(datetime.UTC) + datetime.timedelta(hours=7),
+    path='/',
+)
+```
+
+3. Changing from host from `0.0.0.0` to `localhost`.
+
+4. NextJS project: Change API host from `127.0.0.1` to `localhost`. 
+
+```js
+export const API_HOST_OLD = "127.0.0.1"
+export const API_HOST = "localhost"
+export const API_PORT = "8000"
+```
+
+5. Running django/uvicorn server with `localhost`:  
+`uvicorn ku_djangoo.asgi:application --host "localhost" --port 8000 --reload`
+
 ## Admin Forbidden - CSRF cookie not set
 
 <http://127.0.0.1:8000/admin/login/?next=/admin/>
@@ -1078,7 +1130,7 @@ If you have configured your browser to disable cookies, please re-enable them, a
 
 ## Resolving CORS missing allow headers
 
-`settings.py`
+`myproject/appA/settings.py`
 
 ```py
 CORS_ALLOW_HEADERS = [
@@ -1087,9 +1139,232 @@ CORS_ALLOW_HEADERS = [
 ]
 ```
 
+## Resolving Forbidden CSRF cookie not set
+
+This issue is more simply resolved when using HTTPS environment rather than HTTP environment learn more below section 'HTTPS develpment setup'.
+
+After following the resolve below and setting the HTTPS localhost environment, the `CSRF_COOKIE_HTTPONLY=True` setup still shows the same issue. 
+
+The CSRF token is seen in the browser application storage cookies but it is not accessible by JS which is correct due to `CSRF_COOKIE_HTTPONLY = True` settings, however the both requests' header cookie does have the `csrftoken` but Django is still refusing the request with `forbidden` `incorrect length.` message.
+
+Browser Network tab > csrf/ (/api/token/csrf/) > headers > Set-Cookie
+`set-cookie:csrftoken=u1P...fw7;`
+
+api/token/login/cookie/ > headers > Set-Cookie:
+`cookie:csrftoken=u1P...fw7`
+
+Django Message: `Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/token/login/cookie/`
+
+Resolve:
+
+Learn more at <https://docs.djangoproject.com/en/4.2/howto/csrf/#:~:text=If%20your%20view%20is%20not,of%20the%20cookie%3A%20ensure_csrf_cookie()%20.>. 
+
+Case 1: When Set `False` for `CSRF_COOKIE_HTTPONLY` and `CSRF_USE_SESSIONS`
+Case 2: When Set `True` for `CSRF_COOKIE_HTTPONLY` or `CSRF_USE_SESSIONS`
+
+```py
+MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware', # 1. The right Order is important
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware', # 2. 
+    ...
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3002", # Frontend and Backend Must be on the same host of localhost (recommended) or 127.0.0.1 (not recommended). # Obviously this address must match your frontend address.
+]
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3002", # Must match your frontend address. e.g.:
+    # "https://your-frontend-domain.com",  
+]
+
+CORS_ALLOW_CREDENTIALS = True 
+
+CORS_ALLOW_HEADERS = [
+    'Content-Disposition',
+    'content-type',
+    'Connection',
+    'x-csrftoken',
+    'X-CSRFToken',
+    'authorization',
+    'mode', # for Case 2
+]
+
+SESSION_COOKIE_SAMESITE = 'Lax' # 'Strict' for production, same for CSRF_COOKIE_SAMESITE
+CSRF_COOKIE_SAMESITE = 'Lax' 
+```
+
+The cookies can be seen at developer tool `F12` > `Applicaiton` > `Storage/Cookies/http://localhost:3002` > look for Name `csrftoken`.
+
+Django settings:
+
+```py
+CSRF_USE_SESSIONS = False
+CSRF_COOKIE_HTTPONLY = False
+SESSION_COOKIE_HTTPONLY = True
+
+INSTALLED_APPS = [
+    ...
+    "corsheaders",
+    ...
+]
+```
+
+Django /ku_django/polls/api.py:
+
+```py
+@api_view(['GET'])
+@authentication_classes([]) 
+@permission_classes([]) 
+@ensure_csrf_cookie
+def get_csrf_token(request):
+    return HttpResponse("CSRF cookie set") 
+```
+
+Next/JS frontend side: 
+
+Case 1 (required code):
+
+`const csrftoken = getCookieMatch();`  
+
+Case 2 (required code):
+
+`{ mode: 'same-origin' }`  
+`const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;`  
+
+```js
+export function getCookieMatch() {
+    return document.cookie.match(/csrftoken=([^;]+)/)?.[1];
+}
+
+export function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue; 1
+}
+
+export async function getCSRFToken() {
+    try {
+        const response = await fetch(
+            `${API_ROOT_HTTP}/api/token/csrf/`, 
+            { 
+                credentials: 'include',
+                mode: 'same-origin' // For Case 2, else this line can be removed.
+            }
+
+        );
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const csrftoken = getCookie('csrftoken');
+        if (!csrftoken) {
+            throw new Error("CSRF token not found in cookie after initial request.");
+        }
+        return csrftoken;
+    } catch (error) {
+        console.error("Error getting CSRF token:", error);
+        return null;
+    }
+}
+
+// For Case 1
+const csrftoken = getCookieMatch(); 
+// or below line
+const csrftoken = getCookie('csrftoken') 
+
+// for Case 2
+const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value; 
+
+// 1. Fetch and set csrftoken cookie 
+const csrftoken = await getCSRFToken();
+
+// 2. Then login
+const options = {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrftoken,
+    },
+    mode: 'same-origin', // For Case 2, else this line can be removed.
+    body: JSON.stringify(credentials),
+    credentials: 'include',
+}
+const data = await fetch(`${API_ROOT_HTTP}${route}`, options)
+```
+
+nextJs next.config.mjs:
+```js
+const nextConfig = {
+
+    async headers() {
+        return [
+            {
+                // matching all API routes
+                source: "/api/:path*",
+                headers: [
+                    { key: "Access-Control-Allow-Credentials", value: "true" },
+                    { key: "Access-Control-Allow-Origin", value: "http://localhost:3002" }, // Client origin
+                    { key: "Access-Control-Allow-Methods", value: "GET,DELETE,PATCH,POST,PUT" },
+                    { key: "Access-Control-Allow-Headers", value: "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version" },
+                ]
+            },
+            ...
+        ]
+    },
+      
+    async rewrites() {
+        return [
+            {
+                source: '/api/:path*', // or /:path* - depends on your API address route.
+                destination: 'http://localhost:8000/:path*', // Server API Origin
+            },
+            ...
+        ]
+    }
+}
+
+export default nextConfig;
+```
+
+Related issue:
+
+`Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/token/login/cookie/`
+
+## HTTPS develpment setup
+
+Warning: "certutil" is not available, so the CA can't be automatically installed in Firefox and/or Chrome/Chromium! ⚠️
+Install "certutil" with "apt install libnss3-tools" and re-run "mkcert -install"
+
+```sh
+sudo apt install libnss3-tools
+sudo apt install mkcert
+mkcert -install
+mkcert localhost ::1
+# Must restart your browser 
+
+uvicorn ku_djangoo.asgi:application --host localhost --port 8000 --reload --ssl-certfile ./localhost.pem --ssl-keyfile ./localhost-key.pem
+
+# NextJS frontend
+npm run dev -- -p 3002 --experimental-https
+```
+
 ## Running ASGI server
 
-`uvicorn ku_djangoo.asgi:application --host 0.0.0.0 --port 8000 --reload`
+For `--host` set `localhost` (recommended), `0.0.0.0` (not recommended).
+
+`uvicorn ku_djangoo.asgi:application --host localhost --port 8000 --reload`
 
 ## Setting up ASGI
 
